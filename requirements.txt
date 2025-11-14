@@ -1,0 +1,9 @@
+﻿fastapi
+uvicorn
+pydantic
+httpx
+python-dotenv
+# Placeholder OCR dependency (replace with pytesseract or provider SDK)
+pytesseract
+# Placeholder LLM dependency (replace with openai or azure)
+openai
