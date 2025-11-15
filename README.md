@@ -23,3 +23,6 @@ Justice Made Clear is a one-week prototype that helps citizens understand legal 
 4. LLM classification, simplification, and legal guide generation run in order.
 5. Safety checks compare the original and simplified outputs.
 6. Frontend displays the original document, simplified explanation, four-block guide, and warnings if any.
+
+## Debugging & development
+- **Frontend debug controls:** Launch the SPA with `?debug=true` appended to the URL (for example, `http://localhost:5173/?debug=true`) to surface the quick-state buttons. These controls let you force the Home, Loading, or Output UI states without wiring backend responses, and they remain hidden unless the `debug` query string is explicitly set to `true`.

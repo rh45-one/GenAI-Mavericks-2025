@@ -91,6 +91,15 @@ const getInitialThemePreference = () => {
 };
 */
 
+const getDebugFlagFromLocation = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get("debug") === "true";
+};
+
 const normalizeLegalGuide = (guidePayload) => {
   if (Array.isArray(guidePayload)) {
     return guidePayload;
@@ -115,6 +124,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isResultVisible, setIsResultVisible] = useState(false);
+  const [isDebugMode, setIsDebugMode] = useState(getDebugFlagFromLocation);
   /* const [{ theme, hasManualTheme }, setThemePreference] = useState(getInitialThemePreference);
   const isDarkMode = theme === "dark"; */
 
@@ -142,6 +152,24 @@ export default function App() {
       if (frameId !== null) {
         window.cancelAnimationFrame(frameId);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleNavigationChange = () => {
+      setIsDebugMode(getDebugFlagFromLocation());
+    };
+
+    window.addEventListener("popstate", handleNavigationChange);
+    window.addEventListener("hashchange", handleNavigationChange);
+
+    return () => {
+      window.removeEventListener("popstate", handleNavigationChange);
+      window.removeEventListener("hashchange", handleNavigationChange);
     };
   }, []);
 
@@ -293,20 +321,22 @@ export default function App() {
           />
           {errorMessage && <p className="error-text">{errorMessage}</p>}
           {isResultVisible && <SafetyAlerts alerts={result.safety_flags} />}
-          <div className="debug-controls">
-            <p>Debug screens</p>
-            <div className="debug-buttons">
-              <button type="button" onClick={showHomeState}>
-                Home
-              </button>
-              <button type="button" onClick={showLoadingState}>
-                Loading
-              </button>
-              <button type="button" onClick={showOutputState}>
-                Output
-              </button>
+          {isDebugMode && (
+            <div className="debug-controls">
+              <p>Debug screens</p>
+              <div className="debug-buttons">
+                <button type="button" onClick={showHomeState}>
+                  Home
+                </button>
+                <button type="button" onClick={showLoadingState}>
+                  Loading
+                </button>
+                <button type="button" onClick={showOutputState}>
+                  Output
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </header>
     </div>
