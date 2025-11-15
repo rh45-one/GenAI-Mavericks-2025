@@ -280,10 +280,9 @@ export default function App() {
           )}
         </div>
         <div className="hero-content">
-          <p className="hero-kicker">Justice Made Clear</p>
-          <h1>Type legal text here</h1>
+          <h1>Justice Made Clear</h1>
           <p className="hero-subtitle">
-            Paste confusing legal language or attach a file to instantly get a friendly summary.
+            Turn complex legal documents into simple, actionable language for citizens.
           </p>
           <UploadFormPlaceholder
             onSubmit={handleSubmit}
