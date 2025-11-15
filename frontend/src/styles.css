@@ -3,6 +3,8 @@
   color: #e2e8f0;
   background-color: #050814;
   line-height: 1.5;
+  --cursor-x: 0;
+  --cursor-y: 0;
 }
 
 * {
@@ -31,11 +33,65 @@ body {
   align-items: center;
   justify-content: center;
   position: relative;
+  overflow: hidden;
 }
 
 .hero-content {
   width: min(760px, 100%);
   text-align: center;
+  position: relative;
+  z-index: 2;
+}
+
+.bg-motion-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+  filter: drop-shadow(0 20px 50px rgba(59, 130, 246, 0.25));
+}
+
+.bg-gradient-base {
+  position: absolute;
+  inset: -10%;
+  background: linear-gradient(135deg, #202030 0%, #39304a 20%, #635c51 45%, #7d7461 70%, #b0a990 100%);
+  background-size: 320% 320%;
+  animation: gradientDrift 38s ease-in-out infinite;
+  transform: translate3d(calc(var(--cursor-x) * 10px), calc(var(--cursor-y) * 10px), 0) scale(1.1);
+  filter: blur(18px);
+}
+
+.bg-gradient-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 22% 30%, rgba(176, 169, 144, 0.15), transparent 45%),
+    radial-gradient(circle at 78% 12%, rgba(99, 96, 124, 0.2), transparent 55%),
+    radial-gradient(circle at 50% 85%, rgba(57, 48, 74, 0.18), transparent 60%);
+  opacity: 0.7;
+  mix-blend-mode: screen;
+}
+
+.bg-gradient-noise {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 120px 120px;
+  opacity: 0.25;
+  mix-blend-mode: soft-light;
+  animation: noiseShift 18s linear infinite;
+}
+
+.bg-glow {
+  position: absolute;
+  width: 160%;
+  height: 160%;
+  top: -30%;
+  left: -30%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.35), transparent 60%);
+  transform: translate3d(calc(var(--cursor-x) * 30px), calc(var(--cursor-y) * 30px), 0);
+  transition: transform 120ms ease-out;
+  filter: blur(40px);
 }
 
 .hero-kicker {
@@ -360,3 +416,34 @@ body {
     transform: scale(1.55);
   }
 }
+
+@keyframes gradientDrift {
+  0% {
+    background-position: 0% 50%;
+  }
+  25% {
+    background-position: 50% 60%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  75% {
+    background-position: 50% 40%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes noiseShift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-60px, -40px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+

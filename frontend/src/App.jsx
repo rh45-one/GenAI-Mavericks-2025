@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UploadFormPlaceholder } from "./components/UploadFormPlaceholder.jsx";
 import { SafetyAlerts } from "./components/SafetyAlerts.jsx";
 import { processDocument } from "./services/api.js";
@@ -65,6 +65,33 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isResultVisible, setIsResultVisible] = useState(false);
 
+  useEffect(() => {
+    let frameId = null;
+
+    const handlePointerMove = (event) => {
+      const xRatio = (event.clientX / window.innerWidth - 0.5) * 2;
+      const yRatio = (event.clientY / window.innerHeight - 0.5) * 2;
+
+      if (frameId !== null) {
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        document.documentElement.style.setProperty("--cursor-x", xRatio);
+        document.documentElement.style.setProperty("--cursor-y", yRatio);
+        frameId = null;
+      });
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, []);
+
   const handleSubmit = async (payload) => {
     setIsLoading(true);
     setErrorMessage("");
@@ -124,6 +151,12 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="hero-header">
+        <div className="bg-motion-layer" aria-hidden="true">
+          <div className="bg-gradient-base" />
+          <div className="bg-gradient-overlay" />
+          <div className="bg-gradient-noise" />
+          <div className="bg-glow" />
+        </div>
         <div className="hero-content">
           <p className="hero-kicker">Justice Made Clear</p>
           <h1>Type legal text here</h1>
