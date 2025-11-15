@@ -68,7 +68,7 @@ body {
   border-radius: 999px;
   padding: 0.35rem;
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 0.5rem;
   backdrop-filter: blur(16px);
@@ -80,28 +80,10 @@ body {
 .hero-pill.is-results {
   border-radius: 36px;
   padding: clamp(1.25rem, 3vw, 2rem);
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 1fr;
   background: rgba(15, 23, 42, 0.65);
   border: 1px solid rgba(248, 250, 252, 0.35);
   gap: 1.25rem;
-}
-
-.hero-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(226, 232, 240, 0.8);
-  background: rgba(15, 23, 42, 0.25);
-  transition: background 400ms ease, color 400ms ease, transform 400ms ease;
-}
-
-.hero-icon.is-results {
-  background: rgba(14, 165, 233, 0.2);
-  color: #f8fafc;
-  transform: scale(1.05);
 }
 
 .hero-text-input {
@@ -158,10 +140,22 @@ body {
   font-weight: 600;
 }
 
+.hero-plus-button.is-open {
+  transform: rotate(45deg);
+}
+
+.hero-plus-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .hero-search-button:disabled,
 .hero-plus-button:disabled,
 .hero-secondary-button:disabled,
-.hero-ghost-button:disabled {
+.hero-ghost-button:disabled,
+.hero-attachment-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -169,7 +163,8 @@ body {
 .hero-search-button:not(:disabled):hover,
 .hero-plus-button:not(:disabled):hover,
 .hero-secondary-button:not(:disabled):hover,
-.hero-ghost-button:not(:disabled):hover {
+.hero-ghost-button:not(:disabled):hover,
+.hero-attachment-button:not(:disabled):hover {
   transform: translateY(-1px);
 }
 
@@ -177,6 +172,45 @@ body {
   font-size: 0.85rem;
   color: rgba(248, 250, 252, 0.7);
   margin: 0;
+}
+
+.hero-attachment-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  overflow: hidden;
+  transition: max-height 320ms ease, opacity 220ms ease, transform 320ms ease;
+}
+
+.hero-attachment-menu.is-open {
+  max-height: 200px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.hero-attachment-button {
+  border: none;
+  border-radius: 50%;
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  color: #0f172a;
+  box-shadow: 0 12px 25px rgba(2, 6, 23, 0.25);
+}
+
+.hero-attachment-button svg {
+  pointer-events: none;
 }
 
 .hero-actions {
