@@ -1,8 +1,5 @@
 import { useState } from "react";
 import { UploadFormPlaceholder } from "./components/UploadFormPlaceholder.jsx";
-import { SimplifiedTextPanelPlaceholder } from "./components/SimplifiedTextPanelPlaceholder.jsx";
-import { LegalGuidePanelPlaceholder } from "./components/LegalGuidePanelPlaceholder.jsx";
-import { DocumentViewerPlaceholder } from "./components/DocumentViewerPlaceholder.jsx";
 import { SafetyAlerts } from "./components/SafetyAlerts.jsx";
 import { processDocument } from "./services/api.js";
 
@@ -36,10 +33,16 @@ export default function App() {
   const [result, setResult] = useState(initialResult);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isResultVisible, setIsResultVisible] = useState(false);
 
   const handleSubmit = async (payload) => {
     setIsLoading(true);
     setErrorMessage("");
+    setIsResultVisible(true);
+    setResult((previous) => ({
+      ...previous,
+      simplified_text: "Processing document…"
+    }));
 
     try {
       const apiResult = await processDocument(payload);
@@ -51,9 +54,16 @@ export default function App() {
       });
     } catch (error) {
       setErrorMessage(error.message);
+      setIsResultVisible(false);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleReset = () => {
+    setIsResultVisible(false);
+    setResult(initialResult);
+    setErrorMessage("");
   };
 
   return (
@@ -65,28 +75,17 @@ export default function App() {
           <p className="hero-subtitle">
             Paste confusing legal language or attach a file to instantly get a friendly summary.
           </p>
-          <UploadFormPlaceholder onSubmit={handleSubmit} isLoading={isLoading} />
+          <UploadFormPlaceholder
+            onSubmit={handleSubmit}
+            isLoading={isLoading}
+            resultText={result.simplified_text}
+            isResultVisible={isResultVisible}
+            onReset={handleReset}
+          />
           {errorMessage && <p className="error-text">{errorMessage}</p>}
-          <SafetyAlerts alerts={result.safety_flags} />
+          {isResultVisible && <SafetyAlerts alerts={result.safety_flags} />}
         </div>
       </header>
-
-      <main className="results-grid">
-        <section className="panel">
-          <h2>Simplified Explanation</h2>
-          <SimplifiedTextPanelPlaceholder text={result.simplified_text} isLoading={isLoading} />
-        </section>
-
-        <section className="panel">
-          <h2>Legal Guide</h2>
-          <LegalGuidePanelPlaceholder guide={result.legal_guide} />
-        </section>
-
-        <section className="panel">
-          <h2>Original Document</h2>
-          <DocumentViewerPlaceholder text={result.original_text} />
-        </section>
-      </main>
     </div>
   );
 }
