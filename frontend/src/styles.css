@@ -57,7 +57,7 @@ body {
   inset: -10%;
   background: linear-gradient(135deg, #202030 0%, #39304a 20%, #635c51 45%, #7d7461 70%, #b0a990 100%);
   background-size: 320% 320%;
-  animation: gradientDrift 38s ease-in-out infinite;
+  animation: gradientDrift 15s linear infinite;
   transform: translate3d(calc(var(--cursor-x) * 10px), calc(var(--cursor-y) * 10px), 0) scale(1.1);
   filter: blur(18px);
 }
