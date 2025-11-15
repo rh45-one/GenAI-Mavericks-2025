@@ -1,8 +1,32 @@
-﻿# Frontend placeholder
+﻿# Justice Made Clear – Frontend
 
-This folder will host the Justice Made Clear web UI. During the prototype it focuses on:
-- Uploading documents (text, PDF, image) and calling POST /process_document.
-- Displaying the original document, simplified explanation, and four-block legal guide.
-- Showing safety warnings coming from the backend.
+Vite + React single-page app that talks to the FastAPI backend. The MVP focuses on:
+- Uploading text or a file to `POST /process_document`.
+- Rendering the simplified explanation, four-block legal guide, and original text preview.
+- Highlighting safety warnings returned by the backend.
 
-The UI must be mobile-first/responsive and avoid implementing any legal logic. All reasoning lives in the backend; the frontend only orchestrates calls and renders results.
+## Quick start
+
+```pwsh
+cd frontend
+npm install
+npm run dev
+```
+
+The dev server prints a localhost URL (defaults to `http://localhost:5173`).
+
+## Configuration
+
+- `VITE_API_BASE_URL` (optional): target backend base URL (defaults to `http://localhost:8000`). Create a `.env` file in this folder if you need to override it.
+
+## Available scripts
+
+- `npm run dev` – start Vite dev server with hot reload.
+- `npm run build` – create the production bundle in `dist/`.
+- `npm run preview` – serve the build locally for smoke testing.
+
+## Next steps
+
+- Swap placeholders with production components (document rendering, drag-and-drop uploader, etc.).
+- Add routing/state management if the workflow grows beyond a single screen.
+- Connect auth + analytics once backend endpoints exist.

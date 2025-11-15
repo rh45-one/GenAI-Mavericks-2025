@@ -1,0 +1,141 @@
+:root {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #0f172a;
+  background-color: #f8fafc;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-shell header {
+  padding: 1.25rem;
+  background: #0f172a;
+  color: white;
+}
+
+.app-shell main {
+  flex: 1;
+  padding: 1.5rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 960px) {
+  .app-shell main {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.panel {
+  background: white;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.upload-form-placeholder form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.upload-form-placeholder textarea {
+  min-height: 160px;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5f5;
+  resize: vertical;
+}
+
+.upload-form-placeholder input[type="file"] {
+  padding: 0.45rem;
+}
+
+.button-primary {
+  background: #2563eb;
+  border: none;
+  color: white;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button-primary:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+.error-text {
+  color: #dc2626;
+  margin-top: 0.75rem;
+}
+
+.safety-alerts ul {
+  padding-left: 1.25rem;
+}
+
+.safety-alerts h3 {
+  margin-bottom: 0.25rem;
+}
+
+.legal-guide-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 600px) {
+  .legal-guide-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.legal-guide-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
+
+.legal-guide-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  margin-bottom: 0.35rem;
+}
+
+.legal-guide-card h3 {
+  margin: 0 0 0.35rem;
+}
+
+.document-viewer {
+  white-space: pre-wrap;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: #f1f5f9;
+}

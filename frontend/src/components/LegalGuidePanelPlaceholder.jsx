@@ -1,20 +1,19 @@
 ﻿import React from "react";
 
-// Placeholder legal guide panel.
-// Props: { guide: LegalGuide, warnings: string[] }
-// Renders the four fixed blocks: meaningForYou, whatToDoNow, whatHappensNext, deadlinesAndRisks.
-// Frontend only formats data coming from POST /process_document; no legal logic here.
-export function LegalGuidePanelPlaceholder() {
+export function LegalGuidePanelPlaceholder({ guide }) {
+  if (!guide?.length) {
+    return <p>The structured legal guide will appear after processing.</p>;
+  }
+
   return (
-    <section className="legal-guide-placeholder">
-      <h2>Legal Guide</h2>
-      <ul>
-        <li>meaningForYou</li>
-        <li>whatToDoNow</li>
-        <li>whatHappensNext</li>
-        <li>deadlinesAndRisks</li>
-      </ul>
-      <p>Safety warnings will be presented alongside the guide.</p>
-    </section>
+    <div className="legal-guide-grid">
+      {guide.map((item, index) => (
+        <article key={`${item.title}-${index}`} className="legal-guide-card">
+          <p className="legal-guide-eyebrow">{item.category}</p>
+          <h3>{item.title}</h3>
+          <p>{item.description}</p>
+        </article>
+      ))}
+    </div>
   );
 }
