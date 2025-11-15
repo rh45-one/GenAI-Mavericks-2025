@@ -40,6 +40,42 @@ const sampleResult = {
   safety_flags: ["This document could affect your housing status."]
 };
 
+const GitHubIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M12 2.25c-5.213 0-9.45 4.317-9.45 9.636 0 4.258 2.703 7.871 6.45 9.15.472.091.64-.208.64-.464 0-.229-.009-.837-.013-1.643-2.621.587-3.173-1.28-3.173-1.28-.43-1.12-1.05-1.419-1.05-1.419-.858-.602.065-.59.065-.59.951.067 1.452 1.002 1.452 1.002.843 1.473 2.214 1.047 2.755.802.086-.633.33-1.048.6-1.289-2.093-.244-4.295-1.042-4.295-4.64 0-1.026.354-1.865.934-2.524-.094-.237-.405-1.2.088-2.503 0 0 .79-.262 2.588 1.006a8.79 8.79 0 0 1 4.72 0c1.798-1.268 2.587-1.006 2.587-1.006.494 1.303.183 2.266.09 2.503.58.659.933 1.498.933 2.523 0 3.608-2.205 4.393-4.304 4.632.338.298.64.888.64 1.794 0 1.295-.012 2.341-.012 2.659 0 .257.166.558.647.463 3.744-1.281 6.444-4.892 6.444-9.15 0-5.319-4.238-9.636-9.45-9.636Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+const SunIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle cx="12" cy="12" r="4.25" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M12 3v2m0 14v2m7-9h2M3 12h2m12.728-6.728 1.414 1.414M6.858 17.142l1.414-1.414m0-7.456L6.858 6.858m11.314 11.284 1.414-1.414"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path
+      d="M19.75 14.5A7.25 7.25 0 0 1 9.5 4.25a.75.75 0 0 0-.93-.93A8.75 8.75 0 1 0 20.68 15.43a.75.75 0 0 0-.93-.93Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/*
 const getInitialThemePreference = () => {
   if (typeof window === "undefined") {
     return { theme: "dark", hasManualTheme: false };
@@ -53,6 +89,7 @@ const getInitialThemePreference = () => {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   return { theme: prefersDark ? "dark" : "light", hasManualTheme: false };
 };
+*/
 
 const normalizeLegalGuide = (guidePayload) => {
   if (Array.isArray(guidePayload)) {
@@ -78,8 +115,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isResultVisible, setIsResultVisible] = useState(false);
-  const [{ theme, hasManualTheme }, setThemePreference] = useState(getInitialThemePreference);
-  const isDarkMode = theme === "dark";
+  /* const [{ theme, hasManualTheme }, setThemePreference] = useState(getInitialThemePreference);
+  const isDarkMode = theme === "dark"; */
 
   useEffect(() => {
     let frameId = null;
@@ -108,6 +145,7 @@ export default function App() {
     };
   }, []);
 
+  /*
   useEffect(() => {
     if (typeof document === "undefined") {
       return;
@@ -149,6 +187,7 @@ export default function App() {
       };
     });
   };
+  */
 
   const handleSubmit = async (payload) => {
     setIsLoading(true);
@@ -223,45 +262,22 @@ export default function App() {
             rel="noreferrer noopener"
             aria-label="Open project repository"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M12 2C6.48 2 2 6.58 2 12.17c0 4.47 2.87 8.26 6.84 9.6.5.1.68-.22.68-.48 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.46-1.2-1.13-1.52-1.13-1.52-.92-.64.07-.62.07-.62 1.02.07 1.56 1.07 1.56 1.07.9 1.57 2.36 1.12 2.94.86.09-.67.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.32.1-2.75 0 0 .84-.27 2.75 1.05a9.23 9.23 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.43.2 2.49.1 2.75.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .26.18.58.69.48A10.2 10.2 0 0 0 22 12.17C22 6.58 17.52 2 12 2Z"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <GitHubIcon />
           </a>
-          <button
-            type="button"
-            className="utility-icon theme-toggle"
-            onClick={toggleTheme}
-            aria-label={`Toggle to ${isDarkMode ? "light" : "dark"} mode`}
-          >
-            {isDarkMode ? (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M21 12.75A8.25 8.25 0 0 1 11.25 3a.75.75 0 0 0-.74.6 6.75 6.75 0 0 0 10.64 6.89.75.75 0 0 0-.15-1.23Z"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            ) : (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.3" />
-                <path
-                  d="M12 4V2.5m0 19V21m7-9h1.5M3.5 12H5m11.95-6.95.95-.95M6.1 17.9l.95-.95m0-8L6.1 6.1m12.8 12.8-.95-.95"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
-          </button>
+          {/**
+           * Theme toggle temporarily disabled while we refine
+           * the permanent palette experience.
+           */}
+          {false && (
+            <button
+              type="button"
+              className="utility-icon theme-toggle"
+              onClick={toggleTheme}
+              aria-label="Switch theme"
+            >
+              <SunIcon />
+            </button>
+          )}
         </div>
         <div className="hero-content">
           <p className="hero-kicker">Justice Made Clear</p>
