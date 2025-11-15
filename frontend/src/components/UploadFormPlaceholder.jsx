@@ -123,13 +123,15 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path
-                      d="M12 19V5m0 0l-5 5m5-5 5 5"
+                      d="M8 3h6l4 4v11a2 2 0 01-2 2H8a2 2 0 01-2-2V5a2 2 0 012-2z"
                       stroke="currentColor"
                       strokeWidth="1.6"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
-                    <rect x="4" y="16" width="16" height="4" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                    <path d="M14 3v4h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M9 12h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    <path d="M9 15h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                   </svg>
                 </button>
               </div>
@@ -140,7 +142,7 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
       <input
         ref={hiddenFileInput}
         type="file"
-        accept=".pdf,.png,.jpg,.jpeg,.txt"
+        accept="application/pdf,.pdf,image/*,.txt,.doc,.docx"
         className="sr-only"
         onChange={handleFileChange}
       />
