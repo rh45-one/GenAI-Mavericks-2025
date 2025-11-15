@@ -123,13 +123,13 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path
-                      d="M12 5v14m0 0l-5-5m5 5l5-5"
+                      d="M12 19V5m0 0l-5 5m5-5 5 5"
                       stroke="currentColor"
                       strokeWidth="1.6"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
-                    <rect x="4" y="3" width="16" height="5" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                    <rect x="4" y="16" width="16" height="4" rx="2" stroke="currentColor" strokeWidth="1.6" />
                   </svg>
                 </button>
               </div>

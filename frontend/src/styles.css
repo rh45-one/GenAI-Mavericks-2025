@@ -135,13 +135,34 @@ body {
 }
 
 .hero-plus-button {
-  background: white;
+  position: relative;
+  background: linear-gradient(145deg, #fdfdfd, #d9e4ff);
   color: #111827;
   font-weight: 600;
+  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.35);
+}
+
+.hero-plus-button::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.65), rgba(59, 130, 246, 0));
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 250ms ease, transform 350ms ease;
+  z-index: -1;
 }
 
 .hero-plus-button.is-open {
-  transform: rotate(45deg);
+  transform: rotate(45deg) scale(1.08);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.45);
+}
+
+.hero-plus-button.is-open::after {
+  opacity: 0.65;
+  transform: scale(1.25);
+  animation: hero-plus-glow 1.4s ease-out infinite;
 }
 
 .hero-plus-wrapper {
@@ -285,5 +306,20 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes hero-plus-glow {
+  0% {
+    opacity: 0.6;
+    transform: scale(1.05);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
   }
 }
