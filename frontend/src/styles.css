@@ -1,7 +1,7 @@
 :root {
   font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #0f172a;
-  background-color: #f8fafc;
+  color: #e2e8f0;
+  background-color: #050814;
   line-height: 1.5;
 }
 
@@ -12,6 +12,10 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.3), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.3), transparent 50%),
+    #030712;
+  color: inherit;
 }
 
 .app-shell {
@@ -20,76 +24,172 @@ body {
   min-height: 100vh;
 }
 
-.app-shell header {
-  padding: 1.25rem;
-  background: #0f172a;
+.hero-header {
+  flex: 1;
+  padding: clamp(2rem, 6vw, 5rem) clamp(1.5rem, 6vw, 6rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.hero-content {
+  width: min(760px, 100%);
+  text-align: center;
+}
+
+.hero-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.4em;
+  font-size: 0.75rem;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.hero-content h1 {
+  margin: 0.35rem 0 0.5rem;
+  font-size: clamp(2rem, 4vw, 3.25rem);
+}
+
+.hero-subtitle {
+  margin: 0 0 1.75rem;
+  color: rgba(248, 250, 252, 0.8);
+}
+
+.hero-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hero-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 0.35rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(248, 250, 252, 0.15);
+}
+
+.hero-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(226, 232, 240, 0.8);
+  background: rgba(15, 23, 42, 0.2);
+}
+
+.hero-text-input {
+  background: white;
+  border: none;
+  border-radius: 999px;
+  padding: 0.9rem 1.25rem;
+  font-size: 1rem;
+  color: #0f172a;
+  width: 100%;
+}
+
+.hero-text-input::placeholder {
+  color: #94a3b8;
+}
+
+.hero-text-input:disabled {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.hero-search-button,
+.hero-plus-button {
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.5rem;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+
+.hero-search-button {
+  background: #111827;
   color: white;
 }
 
-.app-shell main {
-  flex: 1;
-  padding: 1.5rem;
+.hero-plus-button {
+  background: white;
+  color: #111827;
+  font-weight: 600;
+}
+
+.hero-search-button:disabled,
+.hero-plus-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hero-search-button:not(:disabled):hover,
+.hero-plus-button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.selected-file {
+  font-size: 0.85rem;
+  color: rgba(248, 250, 252, 0.7);
+  margin: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.error-text {
+  color: #fca5a5;
+  margin-top: 0.75rem;
+}
+
+.results-grid {
+  background: #f8fafc;
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border-top-left-radius: 32px;
+  border-top-right-radius: 32px;
+  margin-top: -2rem;
+  box-shadow: 0 -20px 40px rgba(15, 23, 42, 0.35);
   display: grid;
   gap: 1.5rem;
 }
 
 @media (min-width: 960px) {
-  .app-shell main {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .results-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 .panel {
   background: white;
-  border-radius: 12px;
-  padding: 1.25rem;
+  border-radius: 20px;
+  padding: 1.5rem;
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
 }
 
 .panel h2 {
   margin-top: 0;
-  font-size: 1.05rem;
-  letter-spacing: 0.01em;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #475569;
-}
-
-.upload-form-placeholder form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.upload-form-placeholder textarea {
-  min-height: 160px;
-  padding: 0.75rem;
-  border-radius: 8px;
-  border: 1px solid #cbd5f5;
-  resize: vertical;
-}
-
-.upload-form-placeholder input[type="file"] {
-  padding: 0.45rem;
-}
-
-.button-primary {
-  background: #2563eb;
-  border: none;
-  color: white;
-  padding: 0.75rem 1.25rem;
-  border-radius: 999px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.button-primary:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-}
-
-.error-text {
-  color: #dc2626;
-  margin-top: 0.75rem;
 }
 
 .safety-alerts ul {

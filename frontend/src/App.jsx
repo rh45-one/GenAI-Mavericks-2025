@@ -58,19 +58,20 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header>
-        <h1>Justice Made Clear</h1>
-        <p>Upload any legal document to get a friendly explanation and practical guidance.</p>
-      </header>
-
-      <main>
-        <section className="panel">
-          <h2>Upload</h2>
+      <header className="hero-header">
+        <div className="hero-content">
+          <p className="hero-kicker">Justice Made Clear</p>
+          <h1>Type legal text here</h1>
+          <p className="hero-subtitle">
+            Paste confusing legal language or attach a file to instantly get a friendly summary.
+          </p>
           <UploadFormPlaceholder onSubmit={handleSubmit} isLoading={isLoading} />
           {errorMessage && <p className="error-text">{errorMessage}</p>}
           <SafetyAlerts alerts={result.safety_flags} />
-        </section>
+        </div>
+      </header>
 
+      <main className="results-grid">
         <section className="panel">
           <h2>Simplified Explanation</h2>
           <SimplifiedTextPanelPlaceholder text={result.simplified_text} isLoading={isLoading} />
