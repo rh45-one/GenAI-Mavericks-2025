@@ -117,7 +117,8 @@ body {
     radial-gradient(circle at 18% 28%, rgba(2, 3, 79, 0.55) 0%, rgba(2, 3, 79, 0) 55%),
     radial-gradient(circle at 76% 18%, rgba(30, 64, 175, 0.55) 0%, rgba(30, 64, 175, 0) 60%),
     radial-gradient(circle at 58% 74%, rgba(15, 118, 110, 0.4) 0%, rgba(15, 118, 110, 0) 58%),
-    radial-gradient(circle at 40% 65%, rgba(14, 116, 144, 0.4) 0%, rgba(14, 116, 144, 0) 60%),
+    radial-gradient(circle at 76% 18%, rgba(30, 64, 175, 0.55) 0%, rgba(30, 64, 175, 0) 60%),
+    radial-gradient(circle at 18% 28%, rgba(2, 3, 79, 0.55) 0%, rgba(2, 3, 79, 0) 55%),
     linear-gradient(120deg, #050512 0%, #0b0f21 30%, #151c33 55%, #212640 75%, #382b4c 100%);
   background-size: 240% 240%;
   animation: gradientDrift 15s linear infinite;
