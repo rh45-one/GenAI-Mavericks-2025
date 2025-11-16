@@ -282,7 +282,7 @@ body {
   color: rgba(248, 250, 252, 0.92);
   font-size: 1.05rem;
   line-height: 1.7;
-  max-height: 260px;
+  max-height: 460px;
   overflow-y: auto;
   animation: fadeSlideUp 450ms cubic-bezier(0.16, 1, 0.3, 1);
 }
