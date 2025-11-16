@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { jsPDF } from "jspdf";
 import { UploadFormPlaceholder } from "./components/UploadFormPlaceholder.jsx";
 import { SafetyAlerts } from "./components/SafetyAlerts.jsx";
 import { processDocument } from "./services/api.js";
@@ -379,6 +380,101 @@ export default function App() {
     setResult(sampleResult);
   };
 
+  const handleExportOutput = () => {
+    if (!isResultVisible) {
+      return;
+    }
+
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const marginX = 48;
+    const marginY = 64;
+    const usableWidth = doc.internal.pageSize.getWidth() - marginX * 2;
+    let cursorY = marginY;
+
+    const ensureSpace = (requiredHeight = 40) => {
+      const pageHeight = doc.internal.pageSize.getHeight();
+      if (cursorY + requiredHeight > pageHeight - marginY) {
+        doc.addPage();
+        cursorY = marginY;
+      }
+    };
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text("Justice Made Clear", marginX, cursorY);
+    cursorY += 26;
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(90);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, marginX, cursorY);
+    cursorY += 28;
+
+    const addParagraph = (title, body) => {
+      ensureSpace(50);
+      doc.setTextColor(30);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(title, marginX, cursorY);
+      cursorY += 20;
+
+      doc.setFont("times", "normal");
+      doc.setFontSize(12);
+      doc.setTextColor(33);
+      const lines = doc.splitTextToSize(body || "—", usableWidth);
+      doc.text(lines, marginX, cursorY);
+      cursorY += lines.length * 16 + 10;
+    };
+
+    addParagraph("Simplified Summary", result.simplified_text);
+
+    if (result.legal_guide?.length) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.setTextColor(20);
+      ensureSpace(30);
+      doc.text("Legal Guidance", marginX, cursorY);
+      cursorY += 24;
+
+      result.legal_guide.forEach((entry, index) => {
+        ensureSpace(70);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text(`${index + 1}. ${entry.title || entry.category}`, marginX, cursorY);
+        cursorY += 16;
+        doc.setFont("times", "normal");
+        doc.setFontSize(11.5);
+        const lines = doc.splitTextToSize(entry.description || "Details to follow.", usableWidth);
+        doc.text(lines, marginX, cursorY);
+        cursorY += lines.length * 15 + 12;
+      });
+    }
+
+    if (result.safety_flags?.length) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.setTextColor(150, 55, 55);
+      ensureSpace(40);
+      doc.text("Safety Alerts", marginX, cursorY);
+      cursorY += 22;
+      doc.setFont("times", "normal");
+      doc.setFontSize(12);
+      doc.setTextColor(120, 35, 35);
+      result.safety_flags.forEach((flag) => {
+        ensureSpace(30);
+        const lines = doc.splitTextToSize(`• ${flag}`, usableWidth);
+        doc.text(lines, marginX, cursorY);
+        cursorY += lines.length * 15 + 6;
+      });
+    }
+
+    if (result.original_text) {
+      addParagraph("Original Excerpt", result.original_text);
+    }
+
+    doc.save("justice-made-clear-summary.pdf");
+  };
+
   return (
     <div className="app-shell">
       <header className="hero-header">
@@ -423,6 +519,7 @@ export default function App() {
             isLoading={isLoading}
             resultText={result.simplified_text}
             isResultVisible={isResultVisible}
+            onExportOutput={handleExportOutput}
             onReset={handleReset}
           />
           {errorMessage && <p className="error-text">{errorMessage}</p>}

@@ -1,6 +1,13 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
 
-export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResultVisible, onReset }) {
+export function UploadFormPlaceholder({
+  onSubmit,
+  isLoading,
+  resultText,
+  isResultVisible,
+  onReset,
+  onExportOutput
+}) {
   const [textInput, setTextInput] = useState("");
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
@@ -163,6 +170,14 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
 
       {isResultVisible && (
         <div className="hero-actions">
+          <button
+            className="hero-secondary-button interactive-tilt hero-export-button"
+            type="button"
+            onClick={onExportOutput}
+            disabled={isLoading}
+          >
+            Export PDF
+          </button>
           <button className="hero-secondary-button interactive-tilt" type="button" onClick={onReset} disabled={isLoading}>
             Start a new document
           </button>

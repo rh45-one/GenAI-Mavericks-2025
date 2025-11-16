@@ -455,6 +455,17 @@ body {
   color: #0f172a;
 }
 
+.hero-export-button {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #f8fafc;
+  border: none;
+  box-shadow: 0 18px 40px rgba(79, 70, 229, 0.35);
+}
+
+.hero-export-button:disabled {
+  box-shadow: none;
+}
+
 .hero-ghost-button {
   background: transparent;
   color: rgba(248, 250, 252, 0.9);
@@ -580,6 +591,11 @@ body {
 :root[data-theme="light"] .hero-secondary-button {
   background: #0f172a;
   color: #f8fafc;
+}
+
+:root[data-theme="light"] .hero-export-button {
+  background: linear-gradient(135deg, #4c1d95, #7c3aed);
+  color: #f5f3ff;
 }
 
 :root[data-theme="light"] .hero-ghost-button {
