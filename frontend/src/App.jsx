@@ -153,6 +153,8 @@ export default function App() {
   const initialFlags = getFeatureFlagsFromLocation();
   const [isDebugMode, setIsDebugMode] = useState(initialFlags.debug);
   const [isComicSansMode, setIsComicSansMode] = useState(initialFlags.comicSans);
+  const [isCustomOutputEditorOpen, setIsCustomOutputEditorOpen] = useState(false);
+  const [customOutputText, setCustomOutputText] = useState("");
   /* const [{ theme, hasManualTheme }, setThemePreference] = useState(getInitialThemePreference);
   const isDarkMode = theme === "dark"; */
 
@@ -405,6 +407,7 @@ export default function App() {
     setIsResultVisible(false);
     setResult(initialResult);
     setErrorMessage("");
+    setIsCustomOutputEditorOpen(false);
   };
 
   const showLoadingState = () => {
@@ -415,6 +418,7 @@ export default function App() {
       ...previous,
       simplified_text: "Processing document…"
     }));
+    setIsCustomOutputEditorOpen(false);
   };
 
   const showOutputState = () => {
@@ -422,6 +426,7 @@ export default function App() {
     setIsResultVisible(true);
     setIsLoading(false);
     setResult(sampleResult);
+    setIsCustomOutputEditorOpen(false);
   };
 
   const handleExportOutput = () => {
@@ -519,6 +524,19 @@ export default function App() {
     doc.save("justice-made-clear-summary.pdf");
   };
 
+  const handleApplyCustomOutput = () => {
+    const nextText = customOutputText.trim();
+    if (!nextText) {
+      return;
+    }
+    setIsResultVisible(true);
+    setIsLoading(false);
+    setResult((previous) => ({
+      ...previous,
+      simplified_text: nextText
+    }));
+  };
+
   return (
     <div className="app-shell">
       <header className="hero-header">
@@ -581,7 +599,47 @@ export default function App() {
                 <button className="interactive-tilt" type="button" onClick={showOutputState}>
                   Output
                 </button>
+                <button
+                  className="interactive-tilt debug-secondary-button"
+                  type="button"
+                  onClick={() => setIsCustomOutputEditorOpen((previous) => !previous)}
+                  aria-expanded={isCustomOutputEditorOpen}
+                  aria-controls="custom-output-editor"
+                >
+                  Simulate output
+                </button>
               </div>
+              {isCustomOutputEditorOpen && (
+                <div className="debug-custom-output" id="custom-output-editor">
+                  <label htmlFor="custom-output-text">Inject sample text</label>
+                  <textarea
+                    id="custom-output-text"
+                    rows={4}
+                    value={customOutputText}
+                    onChange={(event) => setCustomOutputText(event.target.value)}
+                    placeholder="Type any text to display in the main result area"
+                  />
+                  <div className="debug-custom-output-actions">
+                    <button
+                      type="button"
+                      className="interactive-tilt debug-custom-apply"
+                      onClick={handleApplyCustomOutput}
+                    >
+                      Apply simulated output
+                    </button>
+                    <button
+                      type="button"
+                      className="interactive-tilt debug-custom-reset"
+                      onClick={() => {
+                        setCustomOutputText("");
+                        setIsCustomOutputEditorOpen(false);
+                      }}
+                    >
+                      Close editor
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

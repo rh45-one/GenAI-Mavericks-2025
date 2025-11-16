@@ -540,6 +540,9 @@ body {
   padding: 0.35rem 1rem;
   font-size: 0.85rem;
   cursor: pointer;
+  min-width: 120px;
+  text-align: center;
+  flex: 0 0 auto;
   transition:
     transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
     border-color 180ms ease,
@@ -550,6 +553,72 @@ body {
   --tilt-base-transform: translateY(-3px) scale(1.03);
   border-color: rgba(248, 250, 252, 0.6);
   box-shadow: 0 16px 25px rgba(3, 7, 18, 0.4);
+}
+
+.debug-secondary-button {
+  background: rgba(15, 23, 42, 0.3);
+  color: rgba(248, 250, 252, 0.7);
+}
+
+.debug-custom-output {
+  margin-top: 1rem;
+  text-align: left;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(248, 250, 252, 0.12);
+  padding: 1rem;
+  border-radius: 18px;
+  box-shadow: 0 15px 40px rgba(3, 7, 18, 0.35);
+}
+
+.debug-custom-output label {
+  display: block;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  color: rgba(248, 250, 252, 0.7);
+}
+
+.debug-custom-output textarea {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(248, 250, 252, 0.2);
+  background: rgba(6, 9, 20, 0.7);
+  color: inherit;
+  padding: 0.75rem 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 120px;
+}
+
+.debug-custom-output textarea::placeholder {
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.debug-custom-output-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.debug-custom-apply,
+.debug-custom-reset {
+  border-radius: 999px;
+  border: 1px solid rgba(248, 250, 252, 0.2);
+  padding: 0.4rem 1.2rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.debug-custom-apply {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.9), rgba(14, 165, 233, 0.85));
+  color: #f8fafc;
+}
+
+.debug-custom-reset {
+  background: rgba(15, 23, 42, 0.4);
+  color: rgba(248, 250, 252, 0.75);
 }
 
 :root[data-theme="light"] .hero-content h1 {
@@ -620,6 +689,27 @@ body {
   border-color: rgba(15, 23, 42, 0.15);
   background: rgba(255, 255, 255, 0.9);
   color: rgba(15, 23, 42, 0.85);
+}
+
+:root[data-theme="light"] .debug-secondary-button,
+:root[data-theme="light"] .debug-custom-reset {
+  background: rgba(15, 23, 42, 0.05);
+  color: rgba(15, 23, 42, 0.8);
+}
+
+:root[data-theme="light"] .debug-custom-output {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] .debug-custom-output textarea {
+  background: rgba(15, 23, 42, 0.04);
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .debug-custom-output textarea::placeholder {
+  color: rgba(15, 23, 42, 0.5);
 }
 
 :root[data-theme="light"] .safety-alerts h3 {
