@@ -92,13 +92,38 @@ const getInitialThemePreference = () => {
 };
 */
 
-const getDebugFlagFromLocation = () => {
+const getFeatureFlagsFromLocation = () => {
   if (typeof window === "undefined") {
-    return false;
+    return { debug: false, comicSans: false };
   }
 
-  const params = new URLSearchParams(window.location.search);
-  return params.get("debug") === "true";
+  const raw = window.location.search.replace(/^\?/, "");
+  if (!raw) {
+    return { debug: false, comicSans: false };
+  }
+
+  const tokens = raw
+    .split("&")
+    .flatMap((segment) => segment.split(","))
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  const store = new Map();
+  tokens.forEach((token) => {
+    const [rawKey, rawValue = "true"] = token.split("=");
+    const key = decodeURIComponent(rawKey || "").toLowerCase();
+    if (!key) {
+      return;
+    }
+    store.set(key, decodeURIComponent(rawValue || "true").toLowerCase());
+  });
+
+  const toBool = (value) => value === "true" || value === "1" || value === "yes";
+
+  return {
+    debug: toBool(store.get("debug") || "false"),
+    comicSans: toBool(store.get("comic-sans") || store.get("comicsans") || "false")
+  };
 };
 
 const normalizeLegalGuide = (guidePayload) => {
@@ -125,7 +150,9 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isResultVisible, setIsResultVisible] = useState(false);
-  const [isDebugMode, setIsDebugMode] = useState(getDebugFlagFromLocation);
+  const initialFlags = getFeatureFlagsFromLocation();
+  const [isDebugMode, setIsDebugMode] = useState(initialFlags.debug);
+  const [isComicSansMode, setIsComicSansMode] = useState(initialFlags.comicSans);
   /* const [{ theme, hasManualTheme }, setThemePreference] = useState(getInitialThemePreference);
   const isDarkMode = theme === "dark"; */
 
@@ -268,7 +295,9 @@ export default function App() {
     }
 
     const handleNavigationChange = () => {
-      setIsDebugMode(getDebugFlagFromLocation());
+      const updatedFlags = getFeatureFlagsFromLocation();
+      setIsDebugMode(updatedFlags.debug);
+      setIsComicSansMode(updatedFlags.comicSans);
     };
 
     window.addEventListener("popstate", handleNavigationChange);
@@ -279,6 +308,21 @@ export default function App() {
       window.removeEventListener("hashchange", handleNavigationChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+    const root = document.documentElement;
+    if (isComicSansMode) {
+      root.dataset.fontMode = "comic-sans";
+    } else {
+      delete root.dataset.fontMode;
+    }
+    return () => {
+      delete root.dataset.fontMode;
+    };
+  }, [isComicSansMode]);
 
   /*
   useEffect(() => {

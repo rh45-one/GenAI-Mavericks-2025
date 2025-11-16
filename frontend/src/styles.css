@@ -29,6 +29,10 @@
   --cursor-y: 0;
 }
 
+:root[data-font-mode="comic-sans"] {
+  font-family: "Comic Sans MS", "Comic Sans", "Zalando Sans Expanded", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 :root[data-theme="light"] {
   color: #0f172a;
   background-color: #f5f0ea;
