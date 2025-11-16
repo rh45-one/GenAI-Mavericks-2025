@@ -26,3 +26,11 @@ Justice Made Clear is a one-week prototype that helps citizens understand legal 
 
 ## Debugging & development
 - **Frontend debug controls:** Launch the SPA with `?debug=true` appended to the URL (for example, `http://localhost:5173/?debug=true`) to surface the quick-state buttons. These controls let you force the Home, Loading, or Output UI states without wiring backend responses, and they remain hidden unless the `debug` query string is explicitly set to `true`.
+- **Frontend dev server:** Install npm dependencies (`npm install`) once inside `frontend/`, then from that same folder run:
+
+	```pwsh
+	cd frontend
+	npm run dev -- --host 127.0.0.1 --port 5173
+	```
+
+	The explicit host/port keeps the preview reachable from other devices (or Codespaces) while avoiding port collisions.
