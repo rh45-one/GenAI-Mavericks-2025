@@ -156,6 +156,112 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return undefined;
+    }
+
+    let activeElement = null;
+    let rafId = null;
+    let pendingCoords = null;
+
+    const resetElement = (element) => {
+      element.style.setProperty("--pointer-shift-x", "0px");
+      element.style.setProperty("--pointer-shift-y", "0px");
+      element.style.setProperty("--pointer-rotate-x", "0deg");
+      element.style.setProperty("--pointer-rotate-y", "0deg");
+    };
+
+    const applyTilt = () => {
+      if (!pendingCoords) {
+        return;
+      }
+
+      const { target, x, y } = pendingCoords;
+      const rect = target.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        return;
+      }
+
+      const relativeX = ((x - rect.left) / rect.width - 0.5) * 2;
+      const relativeY = ((y - rect.top) / rect.height - 0.5) * 2;
+      const maxShift = 2; // Adjust button tilt intensity on hover - reduced from 7
+      let translateX = relativeX * maxShift;
+      let translateY = relativeY * maxShift;
+      const distance = Math.hypot(translateX, translateY);
+      if (distance > maxShift) {
+        const scale = maxShift / distance;
+        translateX *= scale;
+        translateY *= scale;
+      }
+
+      const normalizedX = translateX / maxShift;
+      const normalizedY = translateY / maxShift;
+      const rotateX = normalizedY * -4;
+      const rotateY = normalizedX * 4;
+
+      target.style.setProperty("--pointer-shift-x", `${translateX}px`);
+      target.style.setProperty("--pointer-shift-y", `${translateY}px`);
+      target.style.setProperty("--pointer-rotate-x", `${rotateX}deg`);
+      target.style.setProperty("--pointer-rotate-y", `${rotateY}deg`);
+    };
+
+    const scheduleUpdate = () => {
+      if (rafId !== null) {
+        return;
+      }
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        applyTilt();
+      });
+    };
+
+    const handlePointerMove = (event) => {
+      const target = event.target.closest?.(".interactive-tilt") || null;
+
+      if (target !== activeElement) {
+        if (activeElement) {
+          resetElement(activeElement);
+        }
+        activeElement = target;
+      }
+
+      if (!target) {
+        pendingCoords = null;
+        return;
+      }
+
+      pendingCoords = {
+        target,
+        x: event.clientX,
+        y: event.clientY
+      };
+      scheduleUpdate();
+    };
+
+    const handlePointerLeave = () => {
+      if (activeElement) {
+        resetElement(activeElement);
+        activeElement = null;
+      }
+      pendingCoords = null;
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerleave", handlePointerLeave);
+
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerleave", handlePointerLeave);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (activeElement) {
+        resetElement(activeElement);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return undefined;
     }
@@ -284,7 +390,7 @@ export default function App() {
         </div>
         <div className="utility-bar" aria-label="Page actions">
           <a
-            className="utility-icon github-link"
+            className="utility-icon github-link interactive-tilt"
             href="https://github.com/rh45-one/GenAI-Mavericks-Challenge"
             target="_blank"
             rel="noreferrer noopener"
@@ -325,13 +431,13 @@ export default function App() {
             <div className="debug-controls">
               <p>Debug screens</p>
               <div className="debug-buttons">
-                <button type="button" onClick={showHomeState}>
+                <button className="interactive-tilt" type="button" onClick={showHomeState}>
                   Home
                 </button>
-                <button type="button" onClick={showLoadingState}>
+                <button className="interactive-tilt" type="button" onClick={showLoadingState}>
                   Loading
                 </button>
-                <button type="button" onClick={showOutputState}>
+                <button className="interactive-tilt" type="button" onClick={showOutputState}>
                   Output
                 </button>
               </div>

@@ -62,7 +62,7 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
           </div>
         ) : (
           <input
-            className="hero-text-input"
+            className="hero-text-input interactive-tilt"
             type="text"
             placeholder="Type legal text here..."
             value={textInput}
@@ -73,7 +73,12 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
 
         {!isResultVisible && (
           <>
-            <button className="hero-search-button" type="submit" disabled={isLoading} aria-label="Simplify text">
+            <button
+              className="hero-search-button interactive-tilt"
+              type="submit"
+              disabled={isLoading}
+              aria-label="Simplify text"
+            >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
                   d="M10 4l8 8-8 8"
@@ -86,7 +91,7 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
             </button>
             <div className="hero-plus-wrapper">
               <button
-                className={`hero-plus-button ${showAttachmentMenu ? "is-open" : ""}`}
+                className={`hero-plus-button interactive-tilt ${showAttachmentMenu ? "is-open" : ""}`}
                 type="button"
                 onClick={toggleAttachmentMenu}
                 disabled={isLoading}
@@ -97,7 +102,7 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
               </button>
               <div className={`hero-attachment-menu ${showAttachmentMenu ? "is-open" : ""}`}>
                 <button
-                  className="hero-attachment-button"
+                  className="hero-attachment-button interactive-tilt"
                   type="button"
                   onClick={openCameraPicker}
                   disabled={isLoading}
@@ -115,7 +120,7 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
                   </svg>
                 </button>
                 <button
-                  className="hero-attachment-button"
+                  className="hero-attachment-button interactive-tilt"
                   type="button"
                   onClick={openFilePicker}
                   disabled={isLoading}
@@ -158,10 +163,10 @@ export function UploadFormPlaceholder({ onSubmit, isLoading, resultText, isResul
 
       {isResultVisible && (
         <div className="hero-actions">
-          <button className="hero-secondary-button" type="button" onClick={onReset} disabled={isLoading}>
+          <button className="hero-secondary-button interactive-tilt" type="button" onClick={onReset} disabled={isLoading}>
             Start a new document
           </button>
-          <button className="hero-ghost-button" type="button" onClick={openFilePicker} disabled={isLoading}>
+          <button className="hero-ghost-button interactive-tilt" type="button" onClick={openFilePicker} disabled={isLoading}>
             Attach another file
           </button>
         </div>
