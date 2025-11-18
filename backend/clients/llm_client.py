@@ -62,6 +62,8 @@ class LLMClient:
     # ------------------------------------------------------------------
     # 1) Clasificación de documento
     # ------------------------------------------------------------------
+   
+
     def callClassifier(
         self,
         text: str,
@@ -77,17 +79,94 @@ class LLMClient:
           "confidence": float,
           "raw_response": str
         }
-        """
-        snippet = text[:4000]  # por si el documento es muy largo
 
+        Estrategia:
+        - 1º aplicamos reglas duras muy sencillas sobre el texto.
+        - 2º, si hay duda, preguntamos al LLM.
+        - 3º, si el LLM devuelve algo raro, nos quedamos con el fallback de reglas.
+        """
+        snippet = text[:8000]  # suficiente para ver encabezados importantes
+        upper = snippet.upper()
+
+        # -----------------------------
+        # 1) Heurísticas base por texto
+        # -----------------------------
+        print("🟦DEBUG snippet:", repr(snippet))
+        print("🟥DEBUG upper:", repr(upper))
+        is_resolucion = any(
+            kw in upper
+            for kw in [
+                "SENTENCIA",
+                "AUTO",
+                "FALLO",
+                "FUNDAMENTOS DE DERECHO",
+                "ANTECEDENTES DE HECHO",
+                "JUZGADO DE PRIMERA INSTANCIA",
+                "MAGISTRADO",
+                "MAGISTRADA",
+                "JUZGADO DE 1ª INSTANCIA",
+            ]
+        )
+
+        is_escrito = any(
+            kw in upper
+            for kw in [
+                "SUPLICO AL JUZGADO",
+                "AL JUZGADO",
+                "AL JUZGADO DE",
+                "DEMANDA",
+                "RECURSO",
+                "ESCRITO DE ALEGACIONES",
+                "ESCRITO DE OPOSICIÓN",
+            ]
+        )
+
+        rule_doc_type = "OTRO"
+        rule_doc_subtype = "DESCONOCIDO"
+        rule_conf = 0.0
+
+        if is_resolucion and not is_escrito:
+            rule_doc_type = "RESOLUCION_JURIDICA"
+            if "SENTENCIA" in upper:
+                rule_doc_subtype = "SENTENCIA"
+            elif "AUTO" in upper:
+                rule_doc_subtype = "AUTO"
+            rule_conf = 0.9
+
+        elif is_escrito and not is_resolucion:
+            rule_doc_type = "ESCRITO_PROCESAL"
+            if "DEMANDA" in upper:
+                rule_doc_subtype = "DEMANDA"
+            elif "RECURSO" in upper:
+                rule_doc_subtype = "RECURSO"
+            rule_conf = 0.9
+
+        # Si las reglas ya lo tienen bastante claro, puedes incluso devolver directamente:
+        if rule_conf >= 0.9:
+            return {
+                "doc_type": rule_doc_type,
+                "doc_subtype": rule_doc_subtype,
+                "confidence": rule_conf,
+                "raw_response": "RULE_BASED",
+            }
+
+        # ---------------------------------
+        # 2) Si no está claro, preguntamos LLM
+        # ---------------------------------
         system_prompt = (
-            "Eres un asistente legal experto en documentos judiciales españoles. "
-            "Tu tarea es CLASIFICAR el tipo de documento.\n"
-            "Responde SIEMPRE en JSON estricto, sin texto adicional.\n"
-            "Campos:\n"
-            "- doc_type: 'RESOLUCION_JURIDICA', 'ESCRITO_PROCESAL' o 'OTRO'\n"
-            "- doc_subtype: por ejemplo 'SENTENCIA', 'AUTO', 'DEMANDA', 'RECURSO', 'DESCONOCIDO'\n"
-            "- confidence: numero entre 0 y 1\n"
+            "Eres un asistente LEGAL EXPERTO en documentos judiciales de ESPAÑA.\n"
+            "Debes CLASIFICAR el documento en una de estas categorías:\n"
+            "\n"
+            "1) RESOLUCION_JURIDICA → documentos emitidos por un juzgado.\n"
+            "   Subtipos: SENTENCIA, AUTO, DECRETO, PROVIDENCIA.\n"
+            "2) ESCRITO_PROCESAL → documentos presentados por las partes.\n"
+            "   Subtipos: DEMANDA, RECURSO, ALEGACIONES, OPOSICION.\n"
+            "3) OTRO → si no encaja.\n"
+            "\n"
+            "Instrucciones:\n"
+            "- Responde SIEMPRE en JSON estricto.\n"
+            "- NO añadas explicaciones.\n"
+            "- Usa doc_subtype='DESCONOCIDO' si no estás seguro.\n"
         )
 
         user_prompt = f"""Analiza el siguiente texto y clasifícalo:
@@ -103,20 +182,40 @@ Devuelve SOLO un JSON con esta forma:
   "confidence": 0.0
 }}"""
 
-        raw = self._chat(system_prompt, user_prompt, temperature=0.0)
-
         try:
+            raw = self._chat(system_prompt, user_prompt, temperature=0.0)
             data = json.loads(raw)
-        except json.JSONDecodeError:
-            data = {
-                "doc_type": "OTRO",
-                "doc_subtype": "DESCONOCIDO",
-                "confidence": 0.0,
+        except Exception:
+            # Si el LLM falla, volvemos a lo que hayan dicho las reglas
+            return {
+                "doc_type": rule_doc_type,
+                "doc_subtype": rule_doc_subtype,
+                "confidence": rule_conf,
+                "raw_response": "RULE_FALLBACK",
             }
 
-        data["raw_response"] = raw
-        return data
+        doc_type = data.get("doc_type", "OTRO")
+        doc_subtype = data.get("doc_subtype", "DESCONOCIDO")
+        confidence = float(data.get("confidence", 0.0))
 
+        # ---------------------------------
+        # 3) Ajuste final con reglas
+        # ---------------------------------
+        # Si LLM dice algo raro pero las reglas detectan clarísimamente SENTENCIA:
+        if rule_conf > confidence:
+            doc_type = rule_doc_type
+            doc_subtype = rule_doc_subtype
+            confidence = rule_conf
+            raw_response = f"LLM:{data} | APPLIED_RULE_OVERRIDE"
+        else:
+            raw_response = raw
+
+        return {
+            "doc_type": doc_type,
+            "doc_subtype": doc_subtype,
+            "confidence": confidence,
+            "raw_response": raw_response,
+        }
     # ------------------------------------------------------------------
     # 2) Simplificación en lenguaje claro
     # ------------------------------------------------------------------
