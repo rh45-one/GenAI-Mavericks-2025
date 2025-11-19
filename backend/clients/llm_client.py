@@ -6,25 +6,42 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+PLACEHOLDER_API_KEY = "DEEPSEEK_API_KEY_PLACEHOLDER"
+
 
 class LLMClient:
     """
     Encapsulate all outbound calls to the LLM provider.
 
     En esta versión:
-    - Usamos Ollama en local, sin API keys ni servicios externos.
-    - Llamamos al endpoint HTTP: http://localhost:11434/api/chat
-    - Modelo por defecto: 'llama3.1' (configurable via settings).
+    - Usamos la API de DeepSeek (compatible con OpenAI) vía HTTPS.
+    - Llamamos al endpoint /v1/chat/completions.
+    - Modelo por defecto: 'deepseek-chat' (configurable via settings).
     """
 
     def __init__(self, settings: Dict[str, Any]):
-        # URL base de Ollama (por defecto localhost)
-        self.base_url: str = settings.get("base_url", "http://localhost:11434")
-        # Nombre del modelo en Ollama (ej: `llama3.1`, `phi3`, etc.)
-        self.model: str = settings.get("model", "llama3.1")
+        # Ajustes principales (se permiten claves legacy por compatibilidad)
+        self.base_url: str = (
+            settings.get("llm_base_url")
+            or settings.get("base_url")
+            or "https://api.deepseek.com"
+        )
+        self.model: str = (
+            settings.get("llm_model_name")
+            or settings.get("model")
+            or "deepseek-chat"
+        )
+        self.api_key: str = (
+            settings.get("llm_api_key")
+            or settings.get("api_key")
+            or PLACEHOLDER_API_KEY
+        )
+        self.default_temperature: float = float(settings.get("llm_temperature", 0.2))
+        max_tokens = settings.get("llm_max_tokens")
+        self.max_tokens: Optional[int] = int(max_tokens) if max_tokens else None
 
     # ------------------------------------------------------------------
-    # Helper interno: llamada genérica a Ollama Chat
+    # Helper interno: llamada genérica a DeepSeek Chat
     # ------------------------------------------------------------------
     def _chat(
         self,
@@ -33,28 +50,40 @@ class LLMClient:
         temperature: float = 0.2,
     ) -> str:
         """
-        Hace una llamada al endpoint /api/chat de Ollama y devuelve
+        Hace una llamada al endpoint /v1/chat/completions de DeepSeek y devuelve
         solo el contenido de la respuesta del asistente.
         """
-        url = f"{self.base_url}/api/chat"
+        if not self.api_key or self.api_key == PLACEHOLDER_API_KEY:
+            raise RuntimeError(
+                "DeepSeek API key missing. Set DEEPSEEK_API_KEY before calling the LLM."
+            )
+
+        url = f"{self.base_url.rstrip('/')}/v1/chat/completions"
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "stream": False,
-            "options": {
-                "temperature": temperature,
-            },
+            "temperature": temperature if temperature is not None else self.default_temperature,
+        }
+        if self.max_tokens:
+            payload["max_tokens"] = self.max_tokens
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
         }
 
-        resp = requests.post(url, json=payload, timeout=60)
+        resp = requests.post(url, json=payload, headers=headers, timeout=60)
         resp.raise_for_status()
         data = resp.json()
 
-        # Formato estándar de /api/chat: { "message": { "content": "..." }, ... }
-        message = data.get("message") or {}
+        # Formato compatible OpenAI: { "choices": [ { "message": { "content": "..." } } ] }
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError("DeepSeek response missing 'choices'.")
+        message = choices[0].get("message") or {}
         content = message.get("content", "")
 
         return content

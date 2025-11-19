@@ -25,6 +25,15 @@ Justice Made Clear is a one-week prototype that helps citizens understand legal 
 6. Frontend displays the original document, simplified explanation, four-block guide, and warnings if any.
 
 ## Debugging & development
+- **DeepSeek API configuration:** The backend now targets DeepSeek's OpenAI-compatible endpoint. Copy `.env.example` to `.env` and provide placeholders or real credentials:
+
+	```dotenv
+	DEEPSEEK_API_KEY=replace-with-deepseek-key
+	DEEPSEEK_MODEL=deepseek-chat
+	DEEPSEEK_BASE_URL=https://api.deepseek.com
+	```
+
+	Leaving the placeholder value will prevent outbound calls and raises a helpful error, which keeps the prototype safe during local demos without credentials.
 - **Frontend debug controls:** Launch the SPA with `?debug=true` appended to the URL (for example, `http://localhost:5173/?debug=true`) to surface the quick-state buttons. These controls let you force the Home, Loading, or Output UI states without wiring backend responses, and they remain hidden unless the `debug` query string is explicitly set to `true`.
 - **Frontend dev server:** Install npm dependencies (`npm install`) once inside `frontend/`, then from that same folder run:
 

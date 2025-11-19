@@ -32,14 +32,14 @@ class ClassificationService:
         # 2) Nombres de secciones (ya son list[str] según tu schema)
         section_names: Optional[List[str]] = segmented_document.sections or None
 
-        # 3) Llamada al LLM (tu LLMClient habla con Ollama y tiene heurísticas)
+        # 3) Llamada al LLM (tu LLMClient habla con DeepSeek y tiene heurísticas)
         try:
             llm_output = self._client.callClassifier(
                 text=text,
                 sections=section_names,
             )
         except Exception as e:
-            # Fallback si Ollama falla
+            # Fallback si DeepSeek falla o devuelve error
             return schemas.ClassificationResult(
                 docType="OTRO",
                 docSubtype="DESCONOCIDO",
