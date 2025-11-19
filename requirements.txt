@@ -3,6 +3,7 @@ uvicorn
 pydantic
 httpx
 python-dotenv
+pypdf
 # Placeholder OCR dependency (replace with pytesseract or provider SDK)
 pytesseract
 # Placeholder LLM dependency (replace with openai or azure)
