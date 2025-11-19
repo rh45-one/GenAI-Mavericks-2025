@@ -1,49 +1,38 @@
-﻿"""OCR client wrapper for Justice Made Clear."""
+"""OCR client wrapper for Justice Made Clear."""
 from __future__ import annotations
 
-from typing import Optional
 import io
+from dataclasses import dataclass
+from typing import Optional
 
-# Intentamos usar pypdf o, si no está, PyPDF2 como fallback
+# Attempt to use pypdf, fall back to PyPDF2 when necessary.
 try:
     import pypdf
 except ImportError:  # pragma: no cover
     try:
         import PyPDF2 as pypdf  # type: ignore
-    except ImportError:
+    except ImportError:  # pragma: no cover
         pypdf = None  # type: ignore
 
 
+class OCRClientError(RuntimeError):
+    """Raised when the OCR provider cannot process the file."""
+
+
+@dataclass
 class OCRService:
-    """
-    Provide a consistent interface over different OCR providers.
+    """Provide a consistent interface over different OCR providers."""
 
-    En esta versión:
-    - Para PDF usamos extracción de texto con pypdf / PyPDF2 (no OCR "real", pero suficiente
-      para sentencias típicas que ya traen texto).
-    - Para imágenes, intentamos usar pytesseract si está instalado; si no, levantamos
-      un error claro explicando qué falta.
-    """
-
-    def __init__(self, provider: str = "pypdf"):
-        # provider queda por si más adelante añadimos otros backends (Azure, etc.)
-        self.provider = provider
+    provider: str = "pypdf"
 
     # ------------------------------------------------------------------
-    # PDF → TEXTO
+    # PDF -> TEXT
     # ------------------------------------------------------------------
-    def extractTextFromPdf(self, pdf_bytes: bytes, language: Optional[str] = None) -> str:
-        """
-        Extract text from PDFs.
-
-        Estrategia:
-        - Usar pypdf / PyPDF2 para extraer el texto embebido.
-        - Concatenar todas las páginas.
-        - Si pypdf no está instalado, lanzar un error con instrucción de instalación.
-        """
+    def extract_text_from_pdf(self, pdf_bytes: bytes, language: Optional[str] = None) -> str:
+        """Extract text from PDFs using embedded content when available."""
         if pypdf is None:
-            raise RuntimeError(
-                "pypdf / PyPDF2 no está instalado. Instala con: pip install pypdf"
+            raise OCRClientError(
+                "pypdf / PyPDF2 is required for PDF extraction. Install with: pip install pypdf"
             )
 
         reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
@@ -52,38 +41,25 @@ class OCRService:
         for page in reader.pages:
             try:
                 page_text = page.extract_text() or ""
-            except Exception:
-                page_text = ""
+            except Exception as exc:  # pragma: no cover - backend specific
+                raise OCRClientError(f"Failed to extract text from PDF page: {exc}") from exc
             pages_text.append(page_text)
 
-        full_text = "\n\n".join(pages_text).strip()
-        return full_text
+        return "\n\n".join(pages_text).strip()
 
     # ------------------------------------------------------------------
-    # IMAGEN → TEXTO (opcional)
+    # IMAGE -> TEXT
     # ------------------------------------------------------------------
-    def extractTextFromImage(self, image_bytes: bytes, language: Optional[str] = None) -> str:
-        """
-        Extract plain text from images or scanned documents.
-
-        - Intenta usar pytesseract + Pillow (PIL).
-        - Si no están instalados, lanza un error claro con instrucciones.
-        """
+    def extract_text_from_image(self, image_bytes: bytes, language: Optional[str] = None) -> str:
+        """Extract plain text from images or scanned documents via pytesseract."""
         try:
             from PIL import Image
             import pytesseract
-        except ImportError as e:  # pragma: no cover
-            raise RuntimeError(
-                "OCR de imágenes requiere 'pytesseract' y 'Pillow'. "
-                "Instala con: pip install pytesseract pillow"
-            ) from e
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise OCRClientError(
+                "Image OCR requires 'pytesseract' and 'Pillow'. Install with: pip install pytesseract pillow"
+            ) from exc
 
-        img = Image.open(io.BytesIO(image_bytes))
-
-        config = ""
-        if language:
-            # pytesseract usa -l para el idioma (ej: 'spa' para español)
-            config = f"-l {language}"
-
-        text = pytesseract.image_to_string(img, config=config)
-        return text
+        image = Image.open(io.BytesIO(image_bytes))
+        config = f"-l {language}" if language else ""
+        return pytesseract.image_to_string(image, config=config)

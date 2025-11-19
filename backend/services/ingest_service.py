@@ -1,109 +1,92 @@
-﻿"""Document ingestion utilities for Justice Made Clear."""
+"""Document ingestion utilities for Justice Made Clear."""
 from __future__ import annotations
 
 import base64
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from .. import schemas
-from ..clients.ocr_client import OCRService
+from ..clients.ocr_client import OCRClientError, OCRService
+
 
 class IngestService:
     """Handle ingestion from text, PDF, or image sources."""
 
-    def __init__(self, ocr: Optional[OCRService] = None):
-        # Si no pasas un OCRService, te creo uno por defecto.
-        self._ocr = ocr or OCRService()
+    def __init__(self, ocr: OCRService, default_language: str = "es"):
+        self._ocr = ocr
+        self._default_language = default_language
+
+    def ingest(self, document_input: schemas.DocumentInput) -> schemas.IngestResult:
+        """Public entry point that routes to the correct ingestion strategy."""
+        source = (document_input.sourceType or "").lower()
+        if source == "text":
+            return self._from_text(document_input)
+        if source == "pdf":
+            return self._from_pdf(document_input)
+        if source == "image":
+            return self._from_image(document_input)
+        raise ValueError(f"Unsupported sourceType '{document_input.sourceType}'.")
 
     # ------------------------------------------------------------------
-    # 1) TEXT
+    # TEXT INGESTION
     # ------------------------------------------------------------------
-    def fromText(self, document_input: schemas.DocumentInput) -> schemas.IngestResult:
-        """
-        Ingest text-based submissions.
-
-        - Copia plainText en rawText.
-        - Añade metadatos básicos.
-        """
+    def _from_text(self, document_input: schemas.DocumentInput) -> schemas.IngestResult:
         text = (document_input.plainText or "").strip()
+        if not text:
+            raise ValueError("plainText is required when sourceType=text.")
 
-        metadata = {
-            "sourceType": "text",
-            "length": len(text),
-        }
-
-        return schemas.IngestResult(
-            rawText=text,
-            metadata=metadata,
+        metadata = schemas.DocumentMetadata(
+            sourceType="text",
+            language=self._default_language,
+            charLength=len(text),
+            extra={},
         )
+        return schemas.IngestResult(rawText=text, metadata=metadata)
 
     # ------------------------------------------------------------------
-    # Helper: decodificar base64 si viene así
+    # PDF INGESTION
     # ------------------------------------------------------------------
-    def _decode_file(self, fileContent: Optional[str]) -> bytes:
-        """
-        Devuelve bytes del archivo.
+    def _from_pdf(self, document_input: schemas.DocumentInput) -> schemas.IngestResult:
+        data_bytes = self._decode_file(document_input.fileContent)
+        try:
+            text = self._ocr.extract_text_from_pdf(data_bytes, language=self._default_language)
+        except OCRClientError as exc:
+            raise ValueError(f"OCR PDF extraction failed: {exc}") from exc
 
-        - Si es None → error.
-        - Si no parece base64 → intentar tratarlo como binario en string.
-        """
-        if not fileContent:
-            raise ValueError("fileContent is empty or missing.")
+        metadata = schemas.DocumentMetadata(
+            sourceType="pdf",
+            language=self._default_language,
+            charLength=len(text),
+            extra={"bytes": str(len(data_bytes))},
+        )
+        return schemas.IngestResult(rawText=text, metadata=metadata)
+
+    # ------------------------------------------------------------------
+    # IMAGE INGESTION
+    # ------------------------------------------------------------------
+    def _from_image(self, document_input: schemas.DocumentInput) -> schemas.IngestResult:
+        data_bytes = self._decode_file(document_input.fileContent)
+        try:
+            text = self._ocr.extract_text_from_image(data_bytes, language=self._default_language)
+        except OCRClientError as exc:
+            raise ValueError(f"OCR image extraction failed: {exc}") from exc
+
+        metadata = schemas.DocumentMetadata(
+            sourceType="image",
+            language=self._default_language,
+            charLength=len(text),
+            extra={"bytes": str(len(data_bytes))},
+        )
+        return schemas.IngestResult(rawText=text, metadata=metadata)
+
+    # ------------------------------------------------------------------
+    # HELPERS
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _decode_file(file_content: Optional[str]) -> bytes:
+        if not file_content:
+            raise ValueError("fileContent is required for pdf/image ingestion.")
 
         try:
-            # Intentar base64 normal
-            return base64.b64decode(fileContent, validate=True)
+            return base64.b64decode(file_content, validate=True)
         except Exception:
-            try:
-                # Si no era base64 válido, devolver raw bytes del string
-                return fileContent.encode("utf-8", errors="ignore")
-            except Exception:
-                raise ValueError("fileContent could not be decoded as base64 or bytes.")
-
-    # ------------------------------------------------------------------
-    # 2) PDF
-    # ------------------------------------------------------------------
-    def fromPdf(self, document_input: schemas.DocumentInput) -> schemas.IngestResult:
-        """
-        Handle PDFs:
-        - Decodifica fileContent.
-        - Extrae texto usando OCRService.extractTextFromPdf.
-        - Devuelve IngestResult.
-        """
-        data_bytes = self._decode_file(document_input.fileContent)
-
-        text = self._ocr.extractTextFromPdf(data_bytes)
-
-        metadata: Dict[str, Any] = {
-            "sourceType": "pdf",
-            "length": len(text),
-        }
-
-        return schemas.IngestResult(
-            rawText=text,
-            metadata=metadata,
-        )
-
-    # ------------------------------------------------------------------
-    # 3) IMAGE
-    # ------------------------------------------------------------------
-    def fromImage(self, document_input: schemas.DocumentInput) -> schemas.IngestResult:
-        """
-        Handle images:
-        - Decodifica fileContent.
-        - Llama a extractTextFromImage.
-        - Devuelve IngestResult.
-        """
-        data_bytes = self._decode_file(document_input.fileContent)
-
-        # Idioma por defecto español ("spa") si quieres mejorar OCR
-        text = self._ocr.extractTextFromImage(data_bytes, language="spa")
-
-        metadata: Dict[str, Any] = {
-            "sourceType": "image",
-            "length": len(text),
-        }
-
-        return schemas.IngestResult(
-            rawText=text,
-            metadata=metadata,
-        )
+            return file_content.encode("utf-8", errors="ignore")
