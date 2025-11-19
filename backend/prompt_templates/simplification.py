@@ -56,6 +56,8 @@ def system_prompt() -> str:
         "- Reescribe TODO el texto aplicando estas reglas.\n"
         "- Usa saltos de línea para separar párrafos.\n"
         "- No añadas comentarios meta ni expliques qué estás haciendo.\n"
+        "- Prohibido añadir frases tipo 'Nota:', 'Este es un resumen', 'Consulta el texto completo', o cualquier apelación a revisar el original.\n"
+        "  No incluyas advertencias meta al final ni recordatorios al lector.\n"
         "- No incluyas comillas al principio o al final.\n"
     )
 

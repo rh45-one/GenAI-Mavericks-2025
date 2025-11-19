@@ -7,6 +7,7 @@ from .. import schemas
 from ..clients.llm_client import BaseLLMClient, LLMClientError
 from ..prompt_templates import classification as classification_prompt
 import json
+import re
 
 
 TYPE_KEYWORDS = {
@@ -29,6 +30,7 @@ TYPE_KEYWORDS = {
 SUBTYPE_KEYWORDS = {
     "SENTENCIA": ["SENTENCIA"],
     "AUTO": ["AUTO"],
+    "PROVIDENCIA": ["PROVIDENCIA"],
     "DECRETO": ["DECRETO"],
     "DEMANDA": ["DEMANDA"],
     "RECURSO": ["RECURSO", "RECURR"],
@@ -82,6 +84,21 @@ class ClassificationService:
         text = (document.normalizedText or "").upper()
         sections = [section.name.upper() for section in document.sections]
 
+        # Inspect header (first few lines) for strong subtype indicators
+        # Expand to first 20 lines to catch headers that include 'Sentencia' markers
+        header_lines = (document.normalizedText or "").splitlines()[:20]
+        header_text = " ".join([ln.strip().upper() for ln in header_lines if ln.strip()])
+        forced_subtype: str | None = None
+        # Explicit overrides from header patterns
+        if re.search(r"\bSENTENCIA\b", header_text):
+            forced_subtype = "SENTENCIA"
+        elif re.search(r"\bAUTO\b", header_text):
+            forced_subtype = "AUTO"
+        elif re.search(r"\bDECRETO\b", header_text):
+            forced_subtype = "DECRETO"
+        elif re.search(r"\bPROVIDENCIA\b", header_text):
+            forced_subtype = "PROVIDENCIA"
+
         type_scores = {key: 0.0 for key in TYPE_KEYWORDS}
         type_matches: List[str] = []
 
@@ -98,12 +115,22 @@ class ClassificationService:
         subtype_matches: List[str] = []
         for subtype, keywords in SUBTYPE_KEYWORDS.items():
             for kw in keywords:
-                if kw in text:
+                # Strong signal if keyword appears in the document header
+                if kw in header_text:
+                    subtype_scores[subtype] += 1.0
+                    subtype_matches.append(f"{subtype}:{kw}(header)")
+                elif kw in text:
                     subtype_scores[subtype] += 0.25
                     subtype_matches.append(f"{subtype}:{kw}")
 
         best_subtype = max(subtype_scores, key=subtype_scores.get)
         best_subtype_score = min(subtype_scores[best_subtype], 1.0)
+
+        # If header contained a clear subtype marker, force it (strong deterministic rule)
+        if forced_subtype:
+            best_subtype = forced_subtype
+            best_subtype_score = 1.0
+            subtype_matches.insert(0, f"{forced_subtype}:header_override")
 
         if best_type_score == 0:
             best_type = "OTRO"
@@ -150,15 +177,15 @@ class ClassificationService:
                     data = result
                 except Exception:
                     # fall back to chat-based flow below
-                    system = classification_prompt.system_prompt()
-                    user = classification_prompt.user_prompt(document.normalizedText[:6000], section_names)
-                    raw = self._client.chat(system, user, temperature=0.0)
-                    data = json.loads(raw)
+                        system = classification_prompt.system_prompt()
+                        user = classification_prompt.user_prompt(document.normalizedText[:6000], section_names)
+                        raw = self._client.chat(system, user, temperature=0.0)
+                        data = self._client._parse_json(raw)
             else:
                 system = classification_prompt.system_prompt()
                 user = classification_prompt.user_prompt(document.normalizedText[:6000], section_names)
                 raw = self._client.chat(system, user, temperature=0.0)
-                data = json.loads(raw)
+                data = self._client._parse_json(raw)
         except (LLMClientError, json.JSONDecodeError, Exception):
             return None
 

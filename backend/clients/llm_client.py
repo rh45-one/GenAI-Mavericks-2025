@@ -273,26 +273,30 @@ class DeepSeekLLMClient(BaseLLMClient):
 
         raise LLMClientError(f"DeepSeek request failed: {last_error}")
 
-    @staticmethod
-    def _parse_json(payload: str) -> Dict[str, Any]:
-        # Tolerant JSON parsing: try direct parse, then extract first {...} object
+    def _parse_json(self, payload: str) -> Dict[str, Any]:
+        """Parse JSON strictly by default. If the client settings enable
+        tolerant parsing (settings['tolerant_parse']=True), attempt to extract
+        a JSON object from surrounding text or code fences.
+        """
         if not isinstance(payload, str):
             raise LLMClientError("LLM response was not a string payload")
 
         p = payload.strip()
+        # Strict parse first
         try:
             return json.loads(p)
         except json.JSONDecodeError:
-            # Try to extract the first JSON object within the string
-            start = p.find("{")
-            end = p.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                candidate = p[start : end + 1]
-                try:
-                    return json.loads(candidate)
-                except json.JSONDecodeError:
-                    # fall through to error below
-                    pass
+            # If tolerant parsing is enabled in settings, try to extract the
+            # first JSON object within the string (handles code fences).
+            if self._settings.get("tolerant_parse"):
+                start = p.find("{")
+                end = p.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    candidate = p[start : end + 1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        pass
 
         # If we reach here, parsing failed — include a short snippet for debugging
         snippet = (p or "")[:600]

@@ -41,25 +41,10 @@ class LegalGuideService:
                 system = legal_guide_prompt.system_prompt()
                 user = legal_guide_prompt.user_prompt(simplification_result.simplifiedText, context)
                 raw = self._client.chat(system, user, temperature=0.2)
-
-                # Tolerant JSON extraction (accept code fences and extra text)
-                def _extract_json_candidate(s: str) -> str:
-                    if not s:
-                        return s
-                    s = s.strip()
-                    if s.startswith("```") and s.endswith("```"):
-                        s = s.lstrip('`').rstrip('`').strip()
-                    start = s.find("{")
-                    end = s.rfind("}")
-                    if start != -1 and end != -1 and end > start:
-                        return s[start : end + 1]
-                    return s
-
-                candidate = _extract_json_candidate(raw)
                 try:
-                    data = json.loads(candidate)
-                except json.JSONDecodeError:
-                    # If parsing fails, fall back to empty result but include provider
+                    data = self._client._parse_json(raw)
+                except LLMClientError:
+                    # Fallback generic guide
                     return schemas.LegalGuide(
                         meaningForYou="No se ha podido generar la guía.",
                         whatToDoNow="",

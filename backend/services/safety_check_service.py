@@ -113,7 +113,7 @@ class SafetyCheckService:
                         "raw_response": str(result),
                     }
 
-            # Otherwise use chat-based verifier
+            # Otherwise use chat-based verifier and parse strictly via client
             system = verifier_prompt.system_prompt()
             user = verifier_prompt.user_prompt(
                 original.normalizedText[:5000],
@@ -121,24 +121,9 @@ class SafetyCheckService:
                 legal_guide.model_dump() if hasattr(legal_guide, "model_dump") else str(legal_guide),
             )
             raw = self._client.chat(system, user, temperature=0.0)
-
-            # tolerant extraction
-            def _extract_json_candidate(s: str) -> str:
-                if not s:
-                    return s
-                s = s.strip()
-                if s.startswith("```") and s.endswith("```"):
-                    s = s.lstrip('`').rstrip('`').strip()
-                start = s.find("{")
-                end = s.rfind("}")
-                if start != -1 and end != -1 and end > start:
-                    return s[start : end + 1]
-                return s
-
-            candidate = _extract_json_candidate(raw)
             try:
-                data = json.loads(candidate)
-            except json.JSONDecodeError:
+                data = self._client._parse_json(raw)
+            except LLMClientError:
                 return {"is_safe": False, "warnings": ["No se ha podido verificar correctamente el significado."], "raw_response": raw}
 
             # normalize fields

@@ -7,6 +7,7 @@ from .. import schemas
 from ..clients.llm_client import BaseLLMClient, LLMClientError
 from ..prompt_templates import simplification as simplification_prompt
 import json
+import re
 
 
 class SimplificationService:
@@ -41,35 +42,50 @@ class SimplificationService:
                 system = simplification_prompt.system_prompt()
                 user = simplification_prompt.user_prompt(input_text, doc_type=doc_type, doc_subtype=doc_subtype)
                 raw = self._client.chat(system, user, temperature=0.3)
-
-                # Tolerant JSON parsing: LLMs sometimes wrap JSON in markdown fences
-                # or include extra commentary. Try to extract the first JSON object.
-                def _extract_json_candidate(s: str) -> str:
-                    if not s:
-                        return s
-                    s = s.strip()
-                    # Remove surrounding triple backticks if present.
-                    if s.startswith("```") and s.endswith("```"):
-                        # strip leading/trailing backticks and any language tag
-                        s = s.lstrip('`').rstrip('`').strip()
-                    # Find first { and last } and extract that substring.
-                    start = s.find("{")
-                    end = s.rfind("}")
-                    if start != -1 and end != -1 and end > start:
-                        return s[start : end + 1]
-                    return s
-
-                candidate = _extract_json_candidate(raw)
-                try:
-                    data = json.loads(candidate)
-                except json.JSONDecodeError:
-                    # Provide context for debugging: include a short snippet of raw.
-                    snippet = (raw or "").strip()[:400]
-                    raise RuntimeError(f"Simplifier returned invalid JSON. Raw response:\n{snippet}")
-
+                data = self._client._parse_json(raw)
                 simplified_text = data.get("simplified_text", "")
         except LLMClientError as exc:
             raise RuntimeError(f"Simplification failed: {exc}") from exc
+
+        # Post-process: remove meta-comments that the prompt prohibits (e.g., lines
+        # starting with 'Nota:', or phrases like 'Este es un resumen', or asks to
+        # consult the full text). Keep the rest intact.
+        def _remove_meta_comments(s: str) -> str:
+            if not s:
+                return s
+            lines = s.splitlines()
+            cleaned: list[str] = []
+            meta_patterns = [
+                re.compile(r"^\s*NOTA\s*[:\-]", re.IGNORECASE),
+                re.compile(r"^\s*ESTE ES UN RESUMEN", re.IGNORECASE),
+                re.compile(r"CONSULTA[\s\w]*EL TEXTO COMPLETO", re.IGNORECASE),
+                re.compile(r"^\s*(PARA DETALLES|CONSULTE)", re.IGNORECASE),
+                # Catch 'Nota importante:', 'Nota aclaratoria:', or any line
+                # that begins with 'Nota' followed by words and a colon.
+                re.compile(r"^\s*NOTA\b", re.IGNORECASE),
+                # Remove common footers or italic-marked notes starting with '*'
+                re.compile(r"^\s*\*+", re.IGNORECASE),
+            ]
+            for ln in lines:
+                skip = False
+                for pat in meta_patterns:
+                    if pat.search(ln):
+                        skip = True
+                        break
+                if not skip:
+                    cleaned.append(ln)
+            # Collapse multiple blank lines
+            out_lines = []
+            prev_blank = False
+            for ln in cleaned:
+                is_blank = not ln.strip()
+                if is_blank and prev_blank:
+                    continue
+                out_lines.append(ln)
+                prev_blank = is_blank
+            return "\n".join(out_lines).strip()
+
+        simplified_text = _remove_meta_comments(simplified_text).strip()
 
         important_sections = self._important_sections(document)
 
