@@ -137,10 +137,28 @@ class ClassificationService:
     ) -> schemas.ClassificationResult | None:
         section_names: Sequence[str] | None = [section.name for section in document.sections]
         try:
-            system = classification_prompt.system_prompt()
-            user = classification_prompt.user_prompt(document.normalizedText[:6000], section_names)
-            raw = self._client.chat(system, user, temperature=0.0)
-            data = json.loads(raw)
+            # Backwards-compatible: if the client implements a high-level
+            # `classify` method, prefer that (used by test fakes). Otherwise
+            # fall back to the chat-based prompt flow.
+            if hasattr(self._client, "classify") and callable(getattr(self._client, "classify")):
+                try:
+                    result = self._client.classify(document.normalizedText[:6000], section_names)
+                    # If the client returned a ClassificationResult, return it.
+                    if isinstance(result, schemas.ClassificationResult):
+                        return result
+                    # Otherwise, assume it's a dict-like object.
+                    data = result
+                except Exception:
+                    # fall back to chat-based flow below
+                    system = classification_prompt.system_prompt()
+                    user = classification_prompt.user_prompt(document.normalizedText[:6000], section_names)
+                    raw = self._client.chat(system, user, temperature=0.0)
+                    data = json.loads(raw)
+            else:
+                system = classification_prompt.system_prompt()
+                user = classification_prompt.user_prompt(document.normalizedText[:6000], section_names)
+                raw = self._client.chat(system, user, temperature=0.0)
+                data = json.loads(raw)
         except (LLMClientError, json.JSONDecodeError, Exception):
             return None
 

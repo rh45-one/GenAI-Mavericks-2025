@@ -33,16 +33,43 @@ class SimplificationService:
             truncated = True
 
         try:
-            system = simplification_prompt.system_prompt()
-            user = simplification_prompt.user_prompt(input_text, doc_type=doc_type, doc_subtype=doc_subtype)
-            raw = self._client.chat(system, user, temperature=0.3)
-            # Expect strict JSON: { "simplified_text": "..." }
-            data = json.loads(raw)
-            simplified_text = data.get("simplified_text", "")
+            # Prefer the high-level `simplify` if provided by the client (test fakes).
+            if hasattr(self._client, "simplify") and callable(getattr(self._client, "simplify")):
+                raw_text = self._client.simplify(input_text, doc_type, doc_subtype)
+                simplified_text = raw_text or ""
+            else:
+                system = simplification_prompt.system_prompt()
+                user = simplification_prompt.user_prompt(input_text, doc_type=doc_type, doc_subtype=doc_subtype)
+                raw = self._client.chat(system, user, temperature=0.3)
+
+                # Tolerant JSON parsing: LLMs sometimes wrap JSON in markdown fences
+                # or include extra commentary. Try to extract the first JSON object.
+                def _extract_json_candidate(s: str) -> str:
+                    if not s:
+                        return s
+                    s = s.strip()
+                    # Remove surrounding triple backticks if present.
+                    if s.startswith("```") and s.endswith("```"):
+                        # strip leading/trailing backticks and any language tag
+                        s = s.lstrip('`').rstrip('`').strip()
+                    # Find first { and last } and extract that substring.
+                    start = s.find("{")
+                    end = s.rfind("}")
+                    if start != -1 and end != -1 and end > start:
+                        return s[start : end + 1]
+                    return s
+
+                candidate = _extract_json_candidate(raw)
+                try:
+                    data = json.loads(candidate)
+                except json.JSONDecodeError:
+                    # Provide context for debugging: include a short snippet of raw.
+                    snippet = (raw or "").strip()[:400]
+                    raise RuntimeError(f"Simplifier returned invalid JSON. Raw response:\n{snippet}")
+
+                simplified_text = data.get("simplified_text", "")
         except LLMClientError as exc:
             raise RuntimeError(f"Simplification failed: {exc}") from exc
-        except json.JSONDecodeError:
-            raise RuntimeError("Simplifier returned invalid JSON.")
 
         important_sections = self._important_sections(document)
 

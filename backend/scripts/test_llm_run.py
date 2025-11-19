@@ -2,7 +2,7 @@
 
 Usage (PowerShell):
   setx DEEPSEEK_API_KEY "<your_key>"   # or set in the current session: $env:DEEPSEEK_API_KEY = '<your_key>'
-  python backend\scripts\test_llm_run.py
+    python backend/scripts/test_llm_run.py
 
 The script reads the PDF at the path configured below, extracts text with pypdf,
 creates an LLMClient with the API key from env var `DEEPSEEK_API_KEY` and calls
@@ -21,17 +21,9 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-# Import the module early so we can temporarily disable the placeholder-key
-# rejection (only for this local test runner). This avoids editing library code.
-try:
-    import importlib
-    llm_mod = importlib.import_module("backend.clients.llm_client")
-    # Disable placeholder equality check by setting the sentinel to a unique value
-    # This lets us use the provided key even if it equals the module's placeholder.
-    setattr(llm_mod, "PLACEHOLDER_API_KEY", "__TEST_DISABLED_PLACEHOLDER__")
-except Exception:
-    # If the module cannot be imported yet, we'll handle it later when importing the class.
-    llm_mod = None
+# NOTE: previous versions temporarily monkeypatched the LLM client at import time
+# for local testing. That behavior interferes with pytest collection, so we only
+# perform test-time monkeypatching when the script is executed directly.
 
 # Path to the PDF to test
 PDF_PATH = r"C:\Users\Juan Sebastian Peña\Desktop\Accenture\GenAI-Mavericks-Challenge\Documents\Documentos jurídicos\SJPI_281_2025.pdf"
@@ -87,15 +79,6 @@ def tolerant_parse(payload: str) -> dict:
     # Fall back to direct parse
     return json.loads(p)
 
-# Monkeypatch the class parse function to be tolerant for this test run only.
-try:
-    import backend.clients.llm_client as _mod
-    if hasattr(_mod, "DeepSeekLLMClient"):
-        _mod.DeepSeekLLMClient._parse_json = staticmethod(tolerant_parse)
-    if hasattr(_mod, "LLMClient"):
-        _mod.LLMClient._parse_json = staticmethod(tolerant_parse)
-except Exception:
-    pass
 
 try:
     from pypdf import PdfReader

@@ -275,7 +275,25 @@ class DeepSeekLLMClient(BaseLLMClient):
 
     @staticmethod
     def _parse_json(payload: str) -> Dict[str, Any]:
+        # Tolerant JSON parsing: try direct parse, then extract first {...} object
+        if not isinstance(payload, str):
+            raise LLMClientError("LLM response was not a string payload")
+
+        p = payload.strip()
         try:
-            return json.loads(payload)
-        except json.JSONDecodeError as exc:  # pragma: no cover - defensive
-            raise LLMClientError(f"LLM response was not valid JSON: {payload}") from exc
+            return json.loads(p)
+        except json.JSONDecodeError:
+            # Try to extract the first JSON object within the string
+            start = p.find("{")
+            end = p.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                candidate = p[start : end + 1]
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    # fall through to error below
+                    pass
+
+        # If we reach here, parsing failed — include a short snippet for debugging
+        snippet = (p or "")[:600]
+        raise LLMClientError(f"LLM response was not valid JSON. Snippet: {snippet}")
