@@ -7,7 +7,6 @@ from fastapi import Depends
 
 from . import config
 from .clients import llm_client, ocr_client
-from .clients.fake_llm_client import FakeLLMClient
 from .services import (
     classification_service,
     ingest_service,
@@ -36,16 +35,16 @@ def get_llm_client(
 
     if provider == "deepseek":
         if not resolved_key or resolved_key == llm_client.PLACEHOLDER_API_KEY:
-            logger.warning(
-                "DeepSeek provider selected but LLM_API_KEY/DEEPSEEK_API_KEY is not configured. "
-                "Falling back to the fake LLM client for local development."
+            raise RuntimeError(
+                "DeepSeek provider selected but no LLM_API_KEY/DEEPSEEK_API_KEY was provided. "
+                "Set the environment variable before starting the backend."
             )
-            return FakeLLMClient(settings=llm_settings)
         return llm_client.DeepSeekLLMClient(settings=llm_settings)
-    if provider == "fake":
-        return FakeLLMClient(settings=llm_settings)
 
-    raise ValueError(f"Unsupported LLM provider '{settings.llm_provider}'.")
+    raise ValueError(
+        f"Unsupported LLM provider '{settings.llm_provider}'. "
+        "Set LLM_PROVIDER=deepseek (default) to use the DeepSeek integration."
+    )
 
 
 def get_ocr_service(

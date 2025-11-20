@@ -10,7 +10,9 @@ import requests
 
 from .. import schemas
 
-PLACEHOLDER_API_KEY = "sk-df093be9aa194206b0602986351c07c4"
+# This value is used only to detect obviously unset keys; keep it unique
+# and never equal to a real credential.
+PLACEHOLDER_API_KEY = "sk-PLACEHOLDER-LLM-API-KEY"
 
 
 class LLMClientError(RuntimeError):
@@ -289,10 +291,14 @@ class DeepSeekLLMClient(BaseLLMClient):
             # If tolerant parsing is enabled in settings, try to extract the
             # first JSON object within the string (handles code fences).
             if self._settings.get("tolerant_parse"):
-                start = p.find("{")
-                end = p.rfind("}")
+                cleaned = p.strip()
+                # Remove common code fences like ```json ... ```
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.strip("`")
+                start = cleaned.find("{")
+                end = cleaned.rfind("}")
                 if start != -1 and end != -1 and end > start:
-                    candidate = p[start : end + 1]
+                    candidate = cleaned[start : end + 1]
                     try:
                         return json.loads(candidate)
                     except json.JSONDecodeError:

@@ -126,23 +126,106 @@ const getFeatureFlagsFromLocation = () => {
   };
 };
 
+const LEGAL_GUIDE_LABELS = {
+  meaningForYou: "What this means",
+  whatToDoNow: "What to do now",
+  whatHappensNext: "What happens next",
+  deadlinesAndRisks: "Deadlines & risks"
+};
+
+const hasText = (value) => typeof value === "string" && value.trim().length > 0;
+const SHOW_SAFETY_ALERTS = false;
+
 const normalizeLegalGuide = (guidePayload) => {
+  if (!guidePayload) {
+    return [];
+  }
+
   if (Array.isArray(guidePayload)) {
     return guidePayload;
   }
 
-  if (guidePayload && typeof guidePayload === "object") {
-    return Object.entries(guidePayload).map(([key, value]) => ({
-      category: key,
-      title: value?.title || key.replace(/([A-Z])/g, " $1").trim(),
-      description:
-        typeof value === "string"
-          ? value
-          : value?.description || "More details coming soon."
-    }));
+  if (typeof guidePayload === "object") {
+    return Object.entries(guidePayload).map(([key, value]) => {
+      const friendlyTitle = LEGAL_GUIDE_LABELS[key] || key.replace(/([A-Z])/g, " $1").trim();
+      if (typeof value === "string") {
+        return {
+          category: key,
+          title: friendlyTitle,
+          description: value || "More details coming soon."
+        };
+      }
+      return {
+        category: key,
+        title: value?.title || friendlyTitle,
+        description: value?.description || "More details coming soon."
+      };
+    });
   }
 
   return [];
+};
+
+const normalizeWarnings = (payload) => {
+  const warnings = [];
+  const pushArray = (value) => {
+    if (!value) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => pushArray(item));
+      return;
+    }
+    if (typeof value === "object" && value?.message) {
+      warnings.push(String(value.message));
+      return;
+    }
+    warnings.push(String(value));
+  };
+
+  pushArray(payload?.warnings);
+  pushArray(payload?.safety_flags);
+  pushArray(payload?.safetyFlags);
+  pushArray(payload?.issues);
+
+  const deduped = [];
+  const seen = new Set();
+  warnings.forEach((warning) => {
+    const trimmed = warning.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    seen.add(trimmed);
+        deduped.push(trimmed);
+  });
+  return deduped;
+};
+
+const mapApiResultToState = (apiResult, submissionPayload) => {
+  if (!apiResult || typeof apiResult !== "object") {
+    return initialResult;
+  }
+
+  const simplifiedText =
+    (hasText(apiResult.simplifiedText) && apiResult.simplifiedText.trim()) ||
+    (hasText(apiResult.simplified_text) && apiResult.simplified_text.trim()) ||
+    initialResult.simplified_text;
+
+  const originalText =
+    (hasText(apiResult.originalText) && apiResult.originalText.trim()) ||
+    (hasText(apiResult.original_text) && apiResult.original_text.trim()) ||
+    (hasText(submissionPayload?.textInput) && submissionPayload.textInput.trim()) ||
+    "";
+
+  const legalGuidePayload = apiResult.legalGuide || apiResult.legal_guide || [];
+  const warnings = normalizeWarnings(apiResult);
+
+  return {
+    simplified_text: simplifiedText,
+    legal_guide: normalizeLegalGuide(legalGuidePayload),
+    original_text: originalText,
+    safety_flags: warnings
+  };
 };
 
 export default function App() {
@@ -381,12 +464,7 @@ export default function App() {
 
     try {
       const apiResult = await processDocument(payload);
-      setResult({
-        simplified_text: apiResult.simplified_text || initialResult.simplified_text,
-        legal_guide: normalizeLegalGuide(apiResult.legal_guide),
-        original_text: apiResult.original_text || payload.textInput || "",
-        safety_flags: apiResult.safety_flags || []
-      });
+      setResult(mapApiResultToState(apiResult, payload));
     } catch (error) {
       setErrorMessage(error.message);
       setIsResultVisible(false);
@@ -585,7 +663,7 @@ export default function App() {
             onReset={handleReset}
           />
           {errorMessage && <p className="error-text">{errorMessage}</p>}
-          {isResultVisible && <SafetyAlerts alerts={result.safety_flags} />}
+          {SHOW_SAFETY_ALERTS && isResultVisible && <SafetyAlerts alerts={result.safety_flags} />}
           {isDebugMode && (
             <div className="debug-controls">
               <p>Debug screens</p>

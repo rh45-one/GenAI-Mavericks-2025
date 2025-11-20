@@ -25,21 +25,46 @@ Justice Made Clear is a one-week prototype that helps citizens understand legal 
 6. Frontend displays the original document, simplified explanation, four-block guide, and warnings if any.
 
 ## Debugging & development
-- **DeepSeek API configuration:** The backend now targets DeepSeek's OpenAI-compatible endpoint. Copy `.env.example` to `.env` and provide placeholders or real credentials:
+- **DeepSeek API configuration:** The backend targets DeepSeek's OpenAI-compatible endpoint. Copy `.env.example` to `.env` and provide placeholders or real credentials:
 
-	```dotenv
-	DEEPSEEK_API_KEY=replace-with-deepseek-key
-	DEEPSEEK_MODEL=deepseek-chat
-	DEEPSEEK_BASE_URL=https://api.deepseek.com
-	```
+  ```dotenv
+  DEEPSEEK_API_KEY=replace-with-deepseek-key
+  DEEPSEEK_MODEL=deepseek-chat
+  DEEPSEEK_BASE_URL=https://api.deepseek.com
+  ```
 
-	Leaving the placeholder value will prevent outbound calls and raises a helpful error, which keeps the prototype safe during local demos without credentials.
+  Leaving the placeholder will prevent outbound calls and raise a helpful error, which keeps the prototype safe during local demos without credentials.
 - **Frontend debug controls:** Launch the SPA with `?debug=true` appended to the URL (for example, `http://localhost:5173/?debug=true`) to surface the quick-state buttons. These controls let you force the Home, Loading, or Output UI states without wiring backend responses, and they remain hidden unless the `debug` query string is explicitly set to `true`.
 - **Frontend dev server:** Install npm dependencies (`npm install`) once inside `frontend/`, then from that same folder run:
 
-	```pwsh
-	cd frontend
-	npm run dev -- --host 127.0.0.1 --port 5173
-	```
+  ```pwsh
+  cd frontend
+  npm run dev -- --host 127.0.0.1 --port 5173
+  ```
 
-	The explicit host/port keeps the preview reachable from other devices (or Codespaces) while avoiding port collisions.
+  The explicit host/port keeps the preview reachable from other devices while avoiding port collisions.
+
+## One-command local run (backend + frontend, with DeepSeek key)
+
+Use the PowerShell helper to load a local env file and launch both servers in separate terminals.
+
+**One-time per machine**
+
+```powershell
+Copy-Item backend\dev_env.template.txt dev_env.local.txt
+# Edit dev_env.local.txt and set LLM_API_KEY or DEEPSEEK_API_KEY.
+# Optionally adjust BACKEND_PORT and VITE_API_BASE_URL.
+```
+
+**Start everything (from repo root)**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend\scripts\start_stack.ps1
+```
+
+What happens:
+- Reads `dev_env.local.txt` (if present) and exports the variables.
+- Opens a new PowerShell window running the backend: `python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload` (uses BACKEND_PORT if set).
+- Opens another window in `frontend/` running `npm install` (first run) and `npm run dev -- --host 127.0.0.1 --port 5173` (uses VITE_API_BASE_URL if set).
+
+If the DeepSeek key is missing, the backend will exit with an error. Ensure `LLM_API_KEY` is set in `dev_env.local.txt` before launching.

@@ -99,4 +99,6 @@ def get_settings_dict(settings: Settings | None = None) -> Dict[str, Any]:
         "ocr_provider": settings.ocr_provider,
         "default_language": settings.default_language,
         "pipeline_timeout_seconds": settings.pipeline_timeout_seconds,
+        # Enable tolerant JSON parsing to handle fenced or decorated provider outputs.
+        "tolerant_parse": True,
     }

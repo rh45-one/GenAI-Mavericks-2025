@@ -58,7 +58,7 @@ def main():
         traceback.print_exc()
         sys.exit(3)
 
-    app_config = dependencies.get_config()
+    settings_obj = dependencies.get_settings()
 
     # Ensure the module placeholder constant won't accidentally match the real key
     # (some repos incorrectly set PLACEHOLDER_API_KEY to a test secret).
@@ -70,13 +70,17 @@ def main():
     # Instantiate client directly with provided settings
     client = DeepSeekLLMClient(settings)
 
-    ocr_service = dependencies.get_ocr_service(app_config)
-    ingest_service = dependencies.get_ingest_service(ocr_service, app_config)
+    # Manually instantiate dependencies the way FastAPI would resolve them.
+    ocr_service = dependencies.get_ocr_service(settings=settings_obj)
+    ingest_service = dependencies.get_ingest_service(settings=settings_obj, ocr_service=ocr_service)
     normalization_service = dependencies.get_normalization_service()
-    classification_service = dependencies.get_classification_service(client, app_config)
-    simplification_service = dependencies.get_simplification_service(client)
-    legal_guide_service = dependencies.get_legal_guide_service(client)
-    safety_check_service = dependencies.get_safety_check_service(client)
+    classification_service = dependencies.get_classification_service(
+        settings=settings_obj,
+        llm_client_instance=client,
+    )
+    simplification_service = dependencies.get_simplification_service(llm_client_instance=client)
+    legal_guide_service = dependencies.get_legal_guide_service(llm_client_instance=client)
+    safety_check_service = dependencies.get_safety_check_service(llm_client_instance=client)
 
     import base64
 
