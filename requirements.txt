@@ -1,8 +1,9 @@
-﻿fastapi
+fastapi
 uvicorn
 pydantic
 httpx
 python-dotenv
+python-multipart
 pypdf
 # Placeholder OCR dependency (replace with pytesseract or provider SDK)
 pytesseract

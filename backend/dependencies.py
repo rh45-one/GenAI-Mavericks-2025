@@ -1,10 +1,13 @@
 """Dependency injection helpers for FastAPI routes."""
 from __future__ import annotations
 
-from functools import lru_cache
+import logging
+
+from fastapi import Depends
 
 from . import config
 from .clients import llm_client, ocr_client
+from .clients.fake_llm_client import FakeLLMClient
 from .services import (
     classification_service,
     ingest_service,
@@ -14,44 +17,53 @@ from .services import (
     simplification_service,
 )
 
-
-@lru_cache()
-def get_config() -> config.AppConfig:
-    """Provide cached application configuration."""
-    return config.load_config()
+Settings = config.Settings
+logger = logging.getLogger(__name__)
 
 
-def get_llm_client(app_config: config.AppConfig | None = None) -> llm_client.BaseLLMClient:
-    """Instantiate the pluggable LLM client."""
-    if app_config is None:
-        app_config = get_config()
+def get_settings() -> Settings:
+    """Expose cached Settings instance for FastAPI."""
+    return config.get_settings()
 
-    settings = config.get_settings_dict(app_config)
-    provider = app_config.llm_provider
+
+def get_llm_client(
+    settings: Settings = Depends(get_settings),
+) -> llm_client.BaseLLMClient:
+    """Instantiate the configured LLM client implementation."""
+    provider = settings.llm_provider.lower()
+    llm_settings = config.get_settings_dict(settings)
+    resolved_key = settings.resolved_llm_api_key
 
     if provider == "deepseek":
-        return llm_client.DeepSeekLLMClient(settings=settings)
+        if not resolved_key or resolved_key == llm_client.PLACEHOLDER_API_KEY:
+            logger.warning(
+                "DeepSeek provider selected but LLM_API_KEY/DEEPSEEK_API_KEY is not configured. "
+                "Falling back to the fake LLM client for local development."
+            )
+            return FakeLLMClient(settings=llm_settings)
+        return llm_client.DeepSeekLLMClient(settings=llm_settings)
+    if provider == "fake":
+        return FakeLLMClient(settings=llm_settings)
 
-    raise ValueError(f"Unsupported LLM provider '{provider}'.")
+    raise ValueError(f"Unsupported LLM provider '{settings.llm_provider}'.")
 
 
-def get_ocr_service(app_config: config.AppConfig | None = None) -> ocr_client.OCRService:
+def get_ocr_service(
+    settings: Settings = Depends(get_settings),
+) -> ocr_client.OCRService:
     """Instantiate the OCR service wrapper."""
-    if app_config is None:
-        app_config = get_config()
-    return ocr_client.OCRService(provider=app_config.ocr_provider)
+    return ocr_client.OCRService(provider=settings.ocr_provider)
 
 
 def get_ingest_service(
-    ocr_service: ocr_client.OCRService | None = None,
-    app_config: config.AppConfig | None = None,
+    settings: Settings = Depends(get_settings),
+    ocr_service: ocr_client.OCRService = Depends(get_ocr_service),
 ) -> ingest_service.IngestService:
-    """Provide IngestService with its OCR dependency."""
-    if ocr_service is None:
-        ocr_service = get_ocr_service(app_config)
-    if app_config is None:
-        app_config = get_config()
-    return ingest_service.IngestService(ocr=ocr_service, default_language=app_config.default_language)
+    """Provide IngestService with OCR dependency."""
+    return ingest_service.IngestService(
+        ocr=ocr_service,
+        default_language=settings.default_language,
+    )
 
 
 def get_normalization_service() -> normalization_service.NormalizationService:
@@ -60,43 +72,33 @@ def get_normalization_service() -> normalization_service.NormalizationService:
 
 
 def get_classification_service(
-    llm_client_instance: llm_client.BaseLLMClient | None = None,
-    app_config: config.AppConfig | None = None,
+    settings: Settings = Depends(get_settings),
+    llm_client_instance: llm_client.BaseLLMClient = Depends(get_llm_client),
 ) -> classification_service.ClassificationService:
-    """Provide ClassificationService with thresholds from config."""
-    if app_config is None:
-        app_config = get_config()
-    if llm_client_instance is None:
-        llm_client_instance = get_llm_client(app_config)
+    """Provide ClassificationService with configured thresholds."""
     return classification_service.ClassificationService(
         client=llm_client_instance,
-        rule_threshold=app_config.classification_rule_threshold,
-        force_llm_threshold=app_config.classification_force_llm_threshold,
+        rule_threshold=settings.classification_rule_threshold,
+        force_llm_threshold=settings.classification_force_llm_threshold,
     )
 
 
 def get_simplification_service(
-    llm_client_instance: llm_client.BaseLLMClient | None = None,
+    llm_client_instance: llm_client.BaseLLMClient = Depends(get_llm_client),
 ) -> simplification_service.SimplificationService:
-    """Provide SimplificationService with the configured LLM."""
-    if llm_client_instance is None:
-        llm_client_instance = get_llm_client()
+    """Provide SimplificationService with the pluggable LLM."""
     return simplification_service.SimplificationService(client=llm_client_instance)
 
 
 def get_legal_guide_service(
-    llm_client_instance: llm_client.BaseLLMClient | None = None,
+    llm_client_instance: llm_client.BaseLLMClient = Depends(get_llm_client),
 ) -> legal_guide_service.LegalGuideService:
     """Provide LegalGuideService."""
-    if llm_client_instance is None:
-        llm_client_instance = get_llm_client()
     return legal_guide_service.LegalGuideService(client=llm_client_instance)
 
 
 def get_safety_check_service(
-    llm_client_instance: llm_client.BaseLLMClient | None = None,
+    llm_client_instance: llm_client.BaseLLMClient = Depends(get_llm_client),
 ) -> safety_check_service.SafetyCheckService:
     """Provide SafetyCheckService."""
-    if llm_client_instance is None:
-        llm_client_instance = get_llm_client()
     return safety_check_service.SafetyCheckService(client=llm_client_instance)

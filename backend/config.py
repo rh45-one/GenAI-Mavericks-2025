@@ -1,99 +1,102 @@
 """Configuration helpers for Justice Made Clear backend."""
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Dict, Optional
 
+import importlib
 
-@dataclass
-class AppConfig:
-    """Container for backend settings and pipeline knobs."""
+# Support both pydantic v1 and v2. Avoid attribute access that triggers
+# pydantic's migration shim: check the package version instead.
+_pydantic = importlib.import_module("pydantic")
+_pyd_version = getattr(_pydantic, "__version__", "")
+_pyd_major = _pyd_version.split(".")[0] if _pyd_version else None
 
-    llm_provider: str
-    llm_api_key: Optional[str]
-    llm_model_name: str
-    llm_base_url: str
-    llm_request_timeout_seconds: int
-    llm_retries: int
-    llm_max_tokens: Optional[int]
-    classification_temperature: float
-    simplification_temperature: float
-    guide_temperature: float
-    safety_temperature: float
-    classification_rule_threshold: float
-    classification_force_llm_threshold: float
-    ocr_provider: str
-    default_language: str
-    pipeline_timeout_seconds: int
-
-
-def _get_env_float(name: str, default: float) -> float:
-    value = os.getenv(name)
-    return float(value) if value not in (None, "") else default
+if _pyd_major == "2":
+    try:
+        # pydantic v2 moved BaseSettings to the pydantic-settings package
+        from pydantic_settings import BaseSettings  # type: ignore
+        from pydantic import Field
+    except Exception as exc:  # pragma: no cover - environment misconfiguration
+        raise ImportError(
+            "pydantic v2 detected but the `pydantic-settings` package is not installed. "
+            "Install it with `pip install pydantic-settings` or pin pydantic to v1 (e.g. `pydantic==1.10.12`)."
+        ) from exc
+else:
+    from pydantic import BaseSettings, Field
 
 
-def _get_env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    return int(value) if value not in (None, "") else default
+class Settings(BaseSettings):
+    """Environment-driven configuration used across the backend."""
 
+    api_title: str = "Justice Made Clear API"
+    api_version: str = "0.1.0"
+    backend_cors_origins: str = "*"
 
-def _get_env_optional_int(name: str) -> Optional[int]:
-    value = os.getenv(name)
-    return int(value) if value not in (None, "") else None
-
-
-def load_config() -> AppConfig:
-    """Assemble AppConfig from environment variables or .env files."""
-
-    llm_provider = os.getenv("LLM_PROVIDER", "deepseek").lower()
-    default_model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-    default_base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-
-    if llm_provider == "openai":
-        default_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        default_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-
-    return AppConfig(
-        llm_provider=llm_provider,
-        llm_api_key=os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY"),
-        llm_model_name=os.getenv("LLM_MODEL_NAME", default_model),
-        llm_base_url=os.getenv("LLM_BASE_URL", default_base_url),
-        llm_request_timeout_seconds=_get_env_int("LLM_TIMEOUT_SECONDS", 60),
-        llm_retries=_get_env_int("LLM_RETRIES", 1),
-        llm_max_tokens=_get_env_optional_int("LLM_MAX_TOKENS"),
-        classification_temperature=_get_env_float("LLM_CLASSIFICATION_TEMPERATURE", 0.0),
-        simplification_temperature=_get_env_float("LLM_SIMPLIFICATION_TEMPERATURE", 0.3),
-        guide_temperature=_get_env_float("LLM_GUIDE_TEMPERATURE", 0.25),
-        safety_temperature=_get_env_float("LLM_SAFETY_TEMPERATURE", 0.0),
-        classification_rule_threshold=_get_env_float("CLASSIFICATION_RULE_THRESHOLD", 0.8),
-        classification_force_llm_threshold=_get_env_float(
-            "CLASSIFICATION_FORCE_LLM_THRESHOLD", 0.5
-        ),
-        ocr_provider=os.getenv("OCR_PROVIDER", "tesseract"),
-        default_language=os.getenv("DEFAULT_LANGUAGE", "es"),
-        pipeline_timeout_seconds=_get_env_int("PIPELINE_TIMEOUT_SECONDS", 60),
+    llm_provider: str = "deepseek"
+    llm_api_key: Optional[str] = None
+    deepseek_api_key: Optional[str] = Field(
+        default=None, description="Fallback env var for backward compatibility."
     )
+    llm_model_name: str = "deepseek-chat"
+    llm_base_url: str = "https://api.deepseek.com"
+    llm_request_timeout_seconds: int = 60
+    llm_retries: int = 1
+    llm_max_tokens: Optional[int] = None
+    classification_temperature: float = 0.0
+    simplification_temperature: float = 0.3
+    guide_temperature: float = 0.25
+    safety_temperature: float = 0.0
+    classification_rule_threshold: float = 0.8
+    classification_force_llm_threshold: float = 0.5
+
+    ocr_provider: str = "tesseract"
+    default_language: str = "es"
+    pipeline_timeout_seconds: int = 60
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
+    @property
+    def resolved_llm_api_key(self) -> Optional[str]:
+        """Return whichever API key is available (llm_api_key preferred)."""
+        return self.llm_api_key or self.deepseek_api_key
 
 
-def get_settings_dict(config: AppConfig) -> Dict[str, Any]:
+@lru_cache()
+def get_settings() -> Settings:
+    """Cached accessor used by FastAPI dependency injection."""
+    return Settings()
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility helpers (legacy modules still import these names).
+# ---------------------------------------------------------------------------
+
+def load_config() -> Settings:
+    """Alias maintained for legacy modules/tests."""
+    return get_settings()
+
+
+def get_settings_dict(settings: Settings | None = None) -> Dict[str, Any]:
     """Expose config as a plain dict for clients that prefer primitives."""
-
+    settings = settings or get_settings()
     return {
-        "llm_provider": config.llm_provider,
-        "llm_api_key": config.llm_api_key,
-        "llm_model_name": config.llm_model_name,
-        "llm_base_url": config.llm_base_url,
-        "llm_timeout": config.llm_request_timeout_seconds,
-        "llm_retries": config.llm_retries,
-        "llm_max_tokens": config.llm_max_tokens,
-        "classification_temperature": config.classification_temperature,
-        "simplification_temperature": config.simplification_temperature,
-        "guide_temperature": config.guide_temperature,
-        "safety_temperature": config.safety_temperature,
-        "classification_rule_threshold": config.classification_rule_threshold,
-        "classification_force_llm_threshold": config.classification_force_llm_threshold,
-        "ocr_provider": config.ocr_provider,
-        "default_language": config.default_language,
-        "pipeline_timeout_seconds": config.pipeline_timeout_seconds,
+        "llm_provider": settings.llm_provider,
+        "llm_api_key": settings.resolved_llm_api_key,
+        "llm_model_name": settings.llm_model_name,
+        "llm_base_url": settings.llm_base_url,
+        "llm_timeout": settings.llm_request_timeout_seconds,
+        "llm_retries": settings.llm_retries,
+        "llm_max_tokens": settings.llm_max_tokens,
+        "classification_temperature": settings.classification_temperature,
+        "simplification_temperature": settings.simplification_temperature,
+        "guide_temperature": settings.guide_temperature,
+        "safety_temperature": settings.safety_temperature,
+        "classification_rule_threshold": settings.classification_rule_threshold,
+        "classification_force_llm_threshold": settings.classification_force_llm_threshold,
+        "ocr_provider": settings.ocr_provider,
+        "default_language": settings.default_language,
+        "pipeline_timeout_seconds": settings.pipeline_timeout_seconds,
     }
