@@ -17,11 +17,12 @@ DATE_REGEX_SPANISH = re.compile(
     re.IGNORECASE
 )
 
-# Regex for deadline expressions (as requested in TODO)
-# E.g., "dentro de 5 días", "en el plazo de 10 días"
+# Regex for deadline expressions (strict): detect explicit phrases mentioning a
+# plazo / recurso context plus a days number, e.g. "en el plazo de 20 días",
+# "para recurrir: 20 días", "plazo de 10 días hábiles".
 DEADLINE_REGEX = re.compile(
-    r'(\b(?:dentro de|en el plazo de)\s+\d+\s+d[íi]as\b)',
-    re.IGNORECASE
+    r"(\b(?:dentro de|en el plazo de|plazo de|para recurrir|para interponer (?:el )?recurso|recurso de apelaci[oó]n)\s*(?:de\s*)?\d+\s+d[íi]as(?:\s+h[áa]biles)?\b)",
+    re.IGNORECASE,
 )
 
 # Regex for COP amounts (as requested in TODO)

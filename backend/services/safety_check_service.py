@@ -7,7 +7,7 @@ from .. import schemas
 from ..clients.llm_client import BaseLLMClient, LLMClientError
 from ..utils import date_amount_parsing
 from ..prompt_templates import verifier as verifier_prompt
-import json
+import re
 
 
 class SafetyCheckService:
@@ -24,6 +24,24 @@ class SafetyCheckService:
     ) -> schemas.SafetyCheckResult:
         """Run rule-based checks and optionally call the verifier model."""
         rule_flags = self._rule_based_flags(original, simplification)
+
+        # Check: guide should not claim victory when whoWins is desconocido
+        decision = getattr(simplification, "decisionFallo", None)
+        who = ""
+        try:
+            who = (decision.whoWins if decision else "") or ""
+        except Exception:
+            who = ""
+        if who.lower() == "desconocido":
+            text_all = ((legal_guide.meaningForYou or "") + " " + (legal_guide.whatToDoNow or "")).lower()
+            if (
+                "has ganado" in text_all
+                or "has perdido" in text_all
+                or "ganado" in text_all
+                or "te devolver" in text_all
+                or "el banco debe" in text_all
+            ):
+                rule_flags.append("GUIDE_ASSERTS_VICTORY_WITHOUT_FALLO")
 
         llm_output = self._call_verifier(original, simplification, legal_guide)
         issues = [schemas.SafetyIssue(code=flag, message=flag) for flag in rule_flags]
@@ -47,41 +65,89 @@ class SafetyCheckService:
             llmVerdict=llm_verdict,
         )
 
-    # ------------------------------------------------------------------
-    # Rule-based comparison
-    # ------------------------------------------------------------------
     def _rule_based_flags(
         self,
         original: schemas.SegmentedDocument,
         simplification: schemas.SimplificationResult,
     ) -> List[str]:
         flags: List[str] = []
-        orig_text = (original.normalizedText or "").upper()
+
+        fallo_literal = None
+        if original.metadata and getattr(original.metadata, "extra", None):
+            fallo_literal = original.metadata.extra.get("falloLiteral")
+        if not fallo_literal:
+            flags.append("MISSING_FALLO_LITERAL")
+
+        orig_text_full = (original.normalizedText or "").upper()
         simp_text = (simplification.simplifiedText or "").upper()
+        orig_text_fallo = (fallo_literal or "").upper()
 
-        orig_amounts = set(date_amount_parsing.extract_amounts(orig_text))
-        simp_amounts = set(date_amount_parsing.extract_amounts(simp_text))
-        for amount in orig_amounts:
-            if amount not in simp_amounts:
-                flags.append(f"MISSING_AMOUNT:{amount}")
+        def _detect_winner_from_text(t: str) -> str:
+            if re.search(r"\b(SE\s+DESESTIMA|DESESTIMA|NO\s+HA\s+LUGAR)\b", t, re.IGNORECASE):
+                return "parte demandada"
+            if re.search(r"\b(SE\s+ESTIMA|ESTIMAR|SE\s+ACUERDA\s+ESTIMAR|FALLA\s+A\s+FAVOR)\b", t, re.IGNORECASE):
+                return "parte demandante"
+            return "desconocido"
 
-        orig_dates = set(date_amount_parsing.extract_dates(orig_text))
-        simp_dates = set(date_amount_parsing.extract_dates(simp_text))
-        for date in orig_dates:
-            if date not in simp_dates:
-                flags.append(f"MISSING_DATE:{date}")
+        def _detect_costs_from_text(t: str) -> str:
+            if re.search(r"\b(IMPONER|CONDENA|CONDENANDO)\s+EN\s+COSTAS\b", t, re.IGNORECASE) or re.search(r"\bCOSTAS\b.*\bIMPONEN\b", t, re.IGNORECASE):
+                return "completo"
+            if re.search(r"\b(SIN\s+COSTAS|NO\s+CONDENAR\s+EN\s+COSTAS)\b", t, re.IGNORECASE):
+                return "ninguno"
+            if re.search(r"\bCOSTAS\b.*\bPARCIAL\b", t, re.IGNORECASE) or re.search(r"\bPARCIALMENTE\b.*\bCOSTAS\b", t, re.IGNORECASE):
+                return "parcial"
+            return "desconocido"
 
-        deadlines = set(date_amount_parsing.extract_deadlines(orig_text))
-        simplified_deadlines = set(date_amount_parsing.extract_deadlines(simp_text))
-        for deadline in deadlines:
-            if deadline not in simplified_deadlines:
-                flags.append(f"MISSING_DEADLINE:{deadline}")
+        orig_winner = _detect_winner_from_text(orig_text_fallo)
+        orig_costs = _detect_costs_from_text(orig_text_fallo)
+
+        decision = getattr(simplification, "decisionFallo", None)
+
+        if decision:
+            simp_winner = (getattr(decision, "whoWins", "") or "").strip().lower() or "desconocido"
+            if simp_winner and simp_winner != "desconocido" and orig_winner and orig_winner != "desconocido":
+                norm_map = {
+                    "parte demandante": "parte demandante",
+                    "demandante": "parte demandante",
+                    "actora": "parte demandante",
+                    "parte demandada": "parte demandada",
+                    "demandada": "parte demandada",
+                    "demandado": "parte demandada",
+                    "parcial": "parcial",
+                }
+                simp_norm = norm_map.get(simp_winner, simp_winner)
+                orig_norm = norm_map.get(orig_winner, orig_winner)
+                if simp_norm != orig_norm:
+                    flags.append("FALLO_POLARITY_MISMATCH")
+
+            simp_costs = (getattr(decision, "costs", "") or "").strip().lower() or "desconocido"
+            if simp_costs and simp_costs != "desconocido" and orig_costs and orig_costs != "desconocido":
+                if simp_costs != orig_costs:
+                    flags.append("FALLO_COSTS_MISMATCH")
+
+        try:
+            orig_amounts = set(date_amount_parsing.extract_amounts(orig_text_full))
+            simp_amounts = set(date_amount_parsing.extract_amounts(simp_text))
+            for amount in orig_amounts:
+                if amount not in simp_amounts:
+                    flags.append(f"MISSING_AMOUNT:{amount}")
+
+            orig_dates = set(date_amount_parsing.extract_dates(orig_text_full))
+            simp_dates = set(date_amount_parsing.extract_dates(simp_text))
+            for date in orig_dates:
+                if date not in simp_dates:
+                    flags.append(f"MISSING_DATE:{date}")
+
+            orig_deadlines = set(date_amount_parsing.extract_deadlines(orig_text_full))
+            simp_deadlines = set(date_amount_parsing.extract_deadlines(simp_text))
+            for d in orig_deadlines:
+                if d not in simp_deadlines:
+                    flags.append(f"WARNING_MISSING_DEADLINE:{d}")
+        except Exception:
+            pass
 
         return flags
 
-    # ------------------------------------------------------------------
-    # LLM verifier wrapper
-    # ------------------------------------------------------------------
     def _call_verifier(
         self,
         original: schemas.SegmentedDocument,
@@ -89,12 +155,9 @@ class SafetyCheckService:
         legal_guide: schemas.LegalGuide,
     ) -> Dict[str, Any] | None:
         try:
-            # Prefer the high-level verify_safety method if available (test fakes)
             if hasattr(self._client, "verify_safety") and callable(getattr(self._client, "verify_safety")):
                 result = self._client.verify_safety(original.normalizedText[:5000], simplification.simplifiedText[:5000], legal_guide)
-                # Expect dict-like result
                 if isinstance(result, dict):
-                    # normalize fields
                     warnings = result.get("warnings") or result.get("alerts") or []
                     if not isinstance(warnings, list):
                         warnings = [str(warnings)]
@@ -104,7 +167,6 @@ class SafetyCheckService:
                         "verdict": result.get("verdict") or result.get("summary") or None,
                         "raw_response": result.get("raw_response") or str(result),
                     }
-                # If client returned a SafetyCheckResult, extract fields
                 if hasattr(result, "isSafe"):
                     return {
                         "is_safe": bool(getattr(result, "isSafe")),
@@ -113,7 +175,6 @@ class SafetyCheckService:
                         "raw_response": str(result),
                     }
 
-            # Otherwise use chat-based verifier and parse strictly via client
             system = verifier_prompt.system_prompt()
             user = verifier_prompt.user_prompt(
                 original.normalizedText[:5000],
@@ -126,7 +187,6 @@ class SafetyCheckService:
             except LLMClientError:
                 return {"is_safe": False, "warnings": ["No se ha podido verificar correctamente el significado."], "raw_response": raw}
 
-            # normalize fields
             warnings = data.get("warnings") or data.get("alerts") or []
             if not isinstance(warnings, list):
                 warnings = [str(warnings)]
