@@ -8,7 +8,7 @@ const severityRank = (code) => {
   return 2;
 };
 
-const severityLabel = (code) => (severityRank(code) === 1 ? "CRITICAL" : "WARN");
+const severityLabel = (code) => (severityRank(code) === 1 ? "CRÍTICO" : "ADVERTENCIA");
 const severityIcon = (code) => (severityRank(code) === 1 ? "🔴" : "🟡");
 
 export function SafetyAlerts({ alerts }) {

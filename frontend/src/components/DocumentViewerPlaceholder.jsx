@@ -6,7 +6,7 @@
 // Responsive requirement: original text should remain accessible on phones.
 export function DocumentViewerPlaceholder({ text }) {
   if (!text?.trim()) {
-    return <p>Original document text will appear after processing.</p>;
+    return <p>El texto original aparecerá después del procesamiento.</p>;
   }
 
   return <div className="document-viewer">{text}</div>;

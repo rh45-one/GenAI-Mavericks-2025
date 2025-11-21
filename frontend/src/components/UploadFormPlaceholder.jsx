@@ -65,13 +65,13 @@ export function UploadFormPlaceholder({
       <div className={`hero-pill ${isResultVisible ? "is-results" : ""}`}>
         {isResultVisible ? (
           <div className="hero-result-text">
-            <p>{resultText || "Processing document…"}</p>
+            <p>{resultText || "Procesando documento…"}</p>
           </div>
         ) : (
           <input
             className="hero-text-input interactive-tilt"
             type="text"
-            placeholder="Type legal text here..."
+            placeholder="Escribe el texto legal aquí..."
             value={textInput}
             onChange={(event) => setTextInput(event.target.value)}
             disabled={isLoading}
@@ -84,7 +84,7 @@ export function UploadFormPlaceholder({
               className="hero-search-button interactive-tilt"
               type="submit"
               disabled={isLoading}
-              aria-label="Simplify text"
+              aria-label="Simplificar texto"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -102,7 +102,7 @@ export function UploadFormPlaceholder({
                 type="button"
                 onClick={toggleAttachmentMenu}
                 disabled={isLoading}
-                aria-label="Show attachment options"
+                aria-label="Mostrar opciones de adjunto"
                 aria-expanded={showAttachmentMenu}
               >
                 <span aria-hidden="true">+</span>
@@ -113,7 +113,7 @@ export function UploadFormPlaceholder({
                   type="button"
                   onClick={openCameraPicker}
                   disabled={isLoading}
-                  aria-label="Scan with camera"
+                  aria-label="Escanear con la cámara"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path
@@ -131,7 +131,7 @@ export function UploadFormPlaceholder({
                   type="button"
                   onClick={openFilePicker}
                   disabled={isLoading}
-                  aria-label="Upload a document"
+                  aria-label="Subir un documento"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path
@@ -166,7 +166,7 @@ export function UploadFormPlaceholder({
         className="sr-only"
         onChange={handleFileChange}
       />
-      {!isResultVisible && fileName && <p className="selected-file">Attached: {fileName}</p>}
+      {!isResultVisible && fileName && <p className="selected-file">Adjunto: {fileName}</p>}
 
       {isResultVisible && (
         <div className="hero-actions">
@@ -176,13 +176,13 @@ export function UploadFormPlaceholder({
             onClick={onExportOutput}
             disabled={isLoading}
           >
-            Export PDF
+            Exportar PDF
           </button>
           <button className="hero-secondary-button interactive-tilt" type="button" onClick={onReset} disabled={isLoading}>
-            Start a new document
+            Iniciar un nuevo documento
           </button>
           <button className="hero-ghost-button interactive-tilt" type="button" onClick={openFilePicker} disabled={isLoading}>
-            Attach another file
+            Adjuntar otro archivo
           </button>
         </div>
       )}

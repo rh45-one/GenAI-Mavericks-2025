@@ -2,7 +2,7 @@ import React from "react";
 
 export function SimplifiedTextPanelPlaceholder({ result, isLoading }) {
   if (isLoading) {
-    return <p>Processing document.</p>;
+    return <p>Procesando documento.</p>;
   }
 
   const header = result?.header_summary || {};

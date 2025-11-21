@@ -8,7 +8,7 @@ import { PipelineStatus } from "./components/PipelineStatus.jsx";
 import { processDocument } from "./services/api.js";
 
 const initialResult = {
-  simplified_text: "Submit a document to see Justice Made Clear in action.",
+  simplified_text: "Envía un documento para ver Justice Made Clear en acción.",
   legal_guide: [],
   original_text: "",
   safety_flags: [],
@@ -19,32 +19,32 @@ const initialResult = {
 
 const sampleResult = {
   simplified_text:
-    "This letter is a standard notice about a missed rent payment. Pay the full balance within 10 days to avoid eviction proceedings.",
+    "Esta carta es un aviso estándar por un pago de renta atrasado. Paga el saldo completo en 10 días para evitar un proceso de desalojo.",
   legal_guide: [
     {
       category: "meaningForYou",
-      title: "What this means",
-      description: "Your landlord says you owe $1,250 covering September rent plus late fees."
+      title: "Qué significa",
+      description: "Tu arrendador indica que debes $1,250 correspondientes a la renta de septiembre más recargos."
     },
     {
       category: "whatToDoNow",
-      title: "Immediate steps",
-      description: "Pay the amount or contact the landlord to agree on a payment plan before October 15."
+      title: "Pasos inmediatos",
+      description: "Paga el monto o contacta al arrendador para acordar un plan de pago antes del 15 de octubre."
     },
     {
       category: "whatHappensNext",
-      title: "Next steps",
-      description: "If no payment is made, they can file an eviction case after October 20."
+      title: "Lo que sigue",
+      description: "Si no realizas el pago, pueden iniciar un caso de desalojo después del 20 de octubre."
     },
     {
       category: "deadlinesAndRisks",
-      title: "Deadlines & risks",
-      description: "Missing the deadline may result in court fees and eviction."
+      title: "Plazos y riesgos",
+      description: "Si no cumples el plazo podrías enfrentar costos judiciales y desalojo."
     }
   ],
   original_text:
-    "Notice: You failed to pay the rent due September 1 totaling $1,250. Pay within ten (10) days to cure this default or the tenancy will terminate.",
-  safety_flags: ["This document could affect your housing status."]
+    "Aviso: No pagaste la renta vencida el 1.º de septiembre por un total de $1,250. Paga dentro de diez (10) días para subsanar el incumplimiento o el contrato terminará.",
+  safety_flags: ["Este documento podría afectar tu situación de vivienda."]
 };
 
 const GitHubIcon = () => (
@@ -133,10 +133,10 @@ const getFeatureFlagsFromLocation = () => {
 };
 
 const LEGAL_GUIDE_LABELS = {
-  meaningForYou: "What this means",
-  whatToDoNow: "What to do now",
-  whatHappensNext: "What happens next",
-  deadlinesAndRisks: "Deadlines & risks"
+  meaningForYou: "Qué significa",
+  whatToDoNow: "Qué hacer ahora",
+  whatHappensNext: "Qué pasa después",
+  deadlinesAndRisks: "Plazos y riesgos"
 };
 
 const hasText = (value) => typeof value === "string" && value.trim().length > 0;
@@ -158,13 +158,13 @@ const normalizeLegalGuide = (guidePayload) => {
         return {
           category: key,
           title: friendlyTitle,
-          description: value || "More details coming soon."
+          description: value || "Más detalles próximamente."
         };
       }
       return {
         category: key,
         title: value?.title || friendlyTitle,
-        description: value?.description || "More details coming soon."
+        description: value?.description || "Más detalles próximamente."
       };
     });
   }
@@ -497,7 +497,7 @@ export default function App() {
     setCurrentStepIndex(0);
     setResult((previous) => ({
       ...previous,
-      simplified_text: "Processing document…"
+      simplified_text: "Procesando documento…"
     }));
 
     try {
@@ -538,7 +538,7 @@ export default function App() {
     setIsLoading(true);
     setResult((previous) => ({
       ...previous,
-      simplified_text: "Processing document…"
+      simplified_text: "Procesando documento…"
     }));
     setIsCustomOutputEditorOpen(false);
     setPipelineStatus("running");
@@ -582,7 +582,7 @@ export default function App() {
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(90);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, marginX, cursorY);
+    doc.text(`Generado: ${new Date().toLocaleString()}`, marginX, cursorY);
     cursorY += 28;
 
     const addParagraph = (title, body) => {
@@ -601,14 +601,14 @@ export default function App() {
       cursorY += lines.length * 16 + 10;
     };
 
-    addParagraph("Simplified Summary", result.simplified_text);
+    addParagraph("Resumen simplificado", result.simplified_text);
 
     if (result.legal_guide?.length) {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(16);
       doc.setTextColor(20);
       ensureSpace(30);
-      doc.text("Legal Guidance", marginX, cursorY);
+      doc.text("Guía legal", marginX, cursorY);
       cursorY += 24;
 
       result.legal_guide.forEach((entry, index) => {
@@ -619,7 +619,7 @@ export default function App() {
         cursorY += 16;
         doc.setFont("times", "normal");
         doc.setFontSize(11.5);
-        const lines = doc.splitTextToSize(entry.description || "Details to follow.", usableWidth);
+        const lines = doc.splitTextToSize(entry.description || "Detalles próximamente.", usableWidth);
         doc.text(lines, marginX, cursorY);
         cursorY += lines.length * 15 + 12;
       });
@@ -630,7 +630,7 @@ export default function App() {
       doc.setFontSize(16);
       doc.setTextColor(150, 55, 55);
       ensureSpace(40);
-      doc.text("Safety Alerts", marginX, cursorY);
+      doc.text("Alertas de seguridad", marginX, cursorY);
       cursorY += 22;
       doc.setFont("times", "normal");
       doc.setFontSize(12);
@@ -644,10 +644,10 @@ export default function App() {
     }
 
     if (result.original_text) {
-      addParagraph("Original Excerpt", result.original_text);
+      addParagraph("Extracto original", result.original_text);
     }
 
-    doc.save("justice-made-clear-summary.pdf");
+    doc.save("justice-made-clear-resumen.pdf");
   };
 
   const handleApplyCustomOutput = () => {
@@ -672,13 +672,13 @@ export default function App() {
           <div className="bg-gradient-noise" />
           <div className="bg-glow" />
         </div>
-        <div className="utility-bar" aria-label="Page actions">
+        <div className="utility-bar" aria-label="Acciones de la página">
           <a
             className="utility-icon github-link interactive-tilt"
             href="https://github.com/rh45-one/GenAI-Mavericks-Challenge"
             target="_blank"
             rel="noreferrer noopener"
-            aria-label="Open project repository"
+            aria-label="Abrir el repositorio del proyecto"
           >
             <GitHubIcon />
           </a>
@@ -691,7 +691,7 @@ export default function App() {
               type="button"
               className="utility-icon theme-toggle"
               onClick={toggleTheme}
-              aria-label="Switch theme"
+              aria-label="Cambiar tema"
             >
               <SunIcon />
             </button>
@@ -700,7 +700,7 @@ export default function App() {
         <div className="hero-content">
           <h1>Justice Made Clear</h1>
           <p className="hero-subtitle">
-            Turn complex legal documents into simple, actionable language for citizens.
+            Convierte documentos legales complejos en lenguaje simple y accionable para la ciudadanía.
           </p>
           <UploadFormPlaceholder
             onSubmit={handleSubmit}
@@ -714,16 +714,16 @@ export default function App() {
           {SHOW_SAFETY_ALERTS && isResultVisible && <SafetyAlerts alerts={result.safety_flags} />}
           {isDebugMode && (
             <div className="debug-controls">
-              <p>Debug screens</p>
+              <p>Vistas de depuración</p>
               <div className="debug-buttons">
                 <button className="interactive-tilt" type="button" onClick={showHomeState}>
-                  Home
+                  Inicio
                 </button>
                 <button className="interactive-tilt" type="button" onClick={showLoadingState}>
-                  Loading
+                  Cargando
                 </button>
                 <button className="interactive-tilt" type="button" onClick={showOutputState}>
-                  Output
+                  Resultado
                 </button>
                 <button
                   className="interactive-tilt debug-secondary-button"
@@ -732,18 +732,18 @@ export default function App() {
                   aria-expanded={isCustomOutputEditorOpen}
                   aria-controls="custom-output-editor"
                 >
-                  Simulate output
+                  Simular salida
                 </button>
               </div>
               {isCustomOutputEditorOpen && (
                 <div className="debug-custom-output" id="custom-output-editor">
-                  <label htmlFor="custom-output-text">Inject sample text</label>
+                  <label htmlFor="custom-output-text">Insertar texto de prueba</label>
                   <textarea
                     id="custom-output-text"
                     rows={4}
                     value={customOutputText}
                     onChange={(event) => setCustomOutputText(event.target.value)}
-                    placeholder="Type any text to display in the main result area"
+                    placeholder="Escribe cualquier texto para mostrarlo en el resultado principal"
                   />
                   <div className="debug-custom-output-actions">
                     <button
@@ -751,7 +751,7 @@ export default function App() {
                       className="interactive-tilt debug-custom-apply"
                       onClick={handleApplyCustomOutput}
                     >
-                      Apply simulated output
+                      Aplicar salida simulada
                     </button>
                     <button
                       type="button"
@@ -761,7 +761,7 @@ export default function App() {
                         setIsCustomOutputEditorOpen(false);
                       }}
                     >
-                      Close editor
+                      Cerrar editor
                     </button>
                   </div>
                 </div>
@@ -771,7 +771,7 @@ export default function App() {
         </div>
       </header>
       <main className="results-area">
-        {pipelineStatus === "running" && (
+        {isDebugMode && pipelineStatus === "running" && (
           <PipelineStatus steps={pipelineSteps} currentStepIndex={currentStepIndex} status={pipelineStatus} />
         )}
 

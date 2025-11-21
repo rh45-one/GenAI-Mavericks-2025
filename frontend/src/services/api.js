@@ -15,7 +15,7 @@ export async function processDocument({ textInput, file }) {
   if (file) {
     const detectedType = detectSourceType(file);
     if (!detectedType) {
-      throw new Error("Only PDF or image uploads are supported at the moment.");
+      throw new Error("Por ahora solo se admiten archivos PDF o imágenes.");
     }
 
     formData.append("file", file);
@@ -23,7 +23,7 @@ export async function processDocument({ textInput, file }) {
   }
 
   if (!sourceType) {
-    throw new Error("Provide text or upload a document before submitting.");
+    throw new Error("Escribe texto o sube un documento antes de enviar.");
   }
 
   formData.append("sourceType", sourceType);
@@ -41,7 +41,7 @@ export async function processDocument({ textInput, file }) {
   }
 
   if (!response.ok) {
-    const message = extractErrorMessage(payload) || "Document processing failed.";
+  const message = extractErrorMessage(payload) || "El procesamiento del documento falló.";
     throw new Error(message);
   }
 
