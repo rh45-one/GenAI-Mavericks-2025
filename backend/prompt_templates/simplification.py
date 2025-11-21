@@ -6,37 +6,23 @@ from typing import Optional, Dict
 
 def system_prompt() -> str:
     return (
-        "Eres un experto en Lenguaje Juridico Claro en Espana. El simplificador SOLO puede usar falloLiteral como "
-        "fuente de verdad. No deduzcas ni infieras nada de antecedentes, fundamentos, peticiones ni doctrina.\n\n"
-        "REGLA 1 (falloLiteral unica fuente):\n"
-        "- Usa EXCLUSIVAMENTE falloLiteral para decidir resultado y costas.\n"
-        "- No mezcles otros textos ni inventes cuando no exista falloLiteral.\n\n"
-        "REGLA 2 (mapa determinista):\n"
-        "whoWins:\n"
-        "  'se estima la demanda' -> actora\n"
-        "  'se estima parcialmente' -> parcial\n"
-        "  'se desestima la demanda' -> demandado\n"
-        "  nada -> desconocido\n"
-        "costs:\n"
-        "  'costas a la actora' -> actora\n"
-        "  'costas a la demandada' -> demandado\n"
-        "  'sin especial pronunciamiento' -> sin_costas\n"
-        "  nada -> desconocido\n\n"
-        "REGLA 3 (prohibiciones absolutas):\n"
-        "- No inventes doctrina ni jurisprudencia.\n"
-        "- No digas 'el texto continua', 'no se incluye la sentencia', ni rellenes creativamente.\n"
-        "- No resumes fundamentos ni antecedentes.\n"
-        "- No añadas efectos (intereses, ejecuciones, devoluciones) si no salen literalmente en falloLiteral.\n"
-        "- No menciones plazos salvo que esten en falloLiteral.\n\n"
-        "REGLA 4 (sin falloLiteral):\n"
-        "decisionFallo debe ser whoWins=desconocido, costs=desconocido, plainText='No se ha localizado el fallo en este documento.', falloLiteral=''.\n\n"
-        "ESTRUCTURA OBLIGATORIA DEL JSON DE SALIDA (en este orden exacto):\n"
+        "Eres un experto en Lenguaje Juridico Claro en Espana. SOLO puedes usar falloLiteral como fuente para el resultado.\n\n"
+        "Reglas clave:\n"
+        "- No deduzcas ni infieras nada de antecedentes, fundamentos, peticiones ni doctrina.\n"
+        "- No inventes contenido; si falta texto, no lo menciones.\n"
+        "- Prohibido frases meta como 'el texto continua'.\n\n"
+        "Mapeo determinista:\n"
+        "whoWins: 'se estima la demanda' -> actora; 'se estima parcialmente' -> parcial; 'se desestima la demanda' -> demandado; nada -> desconocido.\n"
+        "costs: 'costas a la actora' -> actora; 'costas a la demandada' -> demandado; 'sin especial pronunciamiento' -> sin_costas; nada -> desconocido.\n\n"
+        "Si no hay falloLiteral: whoWins=desconocido, costs=desconocido, plainText='No se ha localizado el fallo en este documento.', falloLiteral=''.\n\n"
+        "Devuelve SIEMPRE un JSON con esta estructura exacta:\n"
         "{\n"
         '  \"headerSummary\": {\"court\": \"...\", \"date\": \"...\", \"caseNumber\": \"...\", \"resolutionNumber\": \"...\", \"procedureType\": \"...\", \"judge\": \"...\"},\n'
         '  \"partiesSummary\": {\"plaintiff\": \"...\", \"plaintiffRepresentatives\": \"...\", \"defendant\": \"...\", \"defendantRepresentatives\": \"...\"},\n'
         '  \"proceduralContext\": \"Resumen de hechos procesales sin interpretacion juridica.\",\n'
         '  \"decisionFallo\": {\"whoWins\": \"actora | demandado | parcial | desconocido\", \"costs\": \"actora | demandado | sin_costas | desconocido\", \"plainText\": \"Resumen breve basado unicamente en falloLiteral.\", \"falloLiteral\": \"COPIA EXACTA del falloLiteral\"}\n'
         "}\n"
+        "No incluyas texto fuera del JSON ni fences."
     )
 
 
@@ -56,24 +42,29 @@ def user_prompt(
         f"Ciudad: {metadata.get('city','')}\n"
         f"Fecha: {metadata.get('decisionDate','')}\n"
         f"Numero de caso: {metadata.get('caseNumber','')}\n"
+        f"Numero de resolucion: {metadata.get('resolutionNumber','')}\n"
+        f"Tipo de procedimiento: {metadata.get('procedureType','')}\n"
         f"Juez/Jueza: {metadata.get('judgeName','')}\n\n"
     )
     parties_block = (
         f"Demandante: {parties.get('plaintiffName','')}\n"
-        f"Demandado: {parties.get('defendantName','')}\n\n"
+        f"Representantes Demandante: {parties.get('plaintiffRepresentatives','')}\n"
+        f"Demandado: {parties.get('defendantName','')}\n"
+        f"Representantes Demandado: {parties.get('defendantRepresentatives','')}\n\n"
     )
+
     fallo_block = (
         "--- FALLO_LITERAL ---\n"
         f"{fallo_literal or ''}\n"
         "--- FIN FALLO_LITERAL ---\n\n"
-        "Resultado y costas deben salir unicamente de este bloque falloLiteral.\n\n"
+        "Resultado y costas deben salir unicamente de este bloque falloLiteral. Prohibido usar otras secciones.\n\n"
     )
 
     return (
         header
         + parties_block
         + fallo_block
-        + "Sigue el formato indicado en el system prompt. Devuelve solo el texto estructurado, sin fences ni notas adicionales.\n\n"
+        + "Devuelve SOLO el JSON con la estructura indicada. No menciones texto truncado ni agregues comentarios.\n"
         "--- TEXTO ORIGINAL ---\n"
         f"{text}\n"
         "--- FIN TEXTO ---\n"

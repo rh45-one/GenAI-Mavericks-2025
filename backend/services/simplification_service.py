@@ -1,7 +1,7 @@
-"""LLM-based simplification of legal text (structured textual output)."""
+"""LLM-based simplification with deterministic fallo coherence."""
 from __future__ import annotations
 
-from typing import List, Tuple, Dict, Any
+from typing import Dict, Any, List, Tuple
 import re
 
 from .. import schemas
@@ -11,12 +11,12 @@ from ..prompt_templates import simplification as simplification_prompt
 
 class SimplificationService:
     """
-    Chunk long documents, feed rich context (metadata/parties/falloLiteral) to the LLM,
-    and build a structured SimplificationResult while keeping simplifiedText backward-compatible.
+    Build a structured simplification using falloLiteral as the single source of truth
+    for the outcome, while preserving backward compatibility via simplifiedText.
     """
 
-    MAX_CHARS = 12000  # soft limit per chunk
-    HARD_LIMIT = 16000  # hard emergency limit per chunk
+    MAX_CHARS = 12000
+    HARD_LIMIT = 16000
 
     def __init__(self, client: BaseLLMClient):
         self._client = client
@@ -26,190 +26,182 @@ class SimplificationService:
         document: schemas.SegmentedDocument,
         classification: schemas.ClassificationResult,
     ) -> schemas.SimplificationResult:
-        """Simplify a document using LLM with strong fallo literal constraints."""
-        full_text = document.normalizedText or ""
         doc_type = classification.docType or "OTRO"
         doc_subtype = classification.docSubtype or "DESCONOCIDO"
         strategy = self._select_strategy(doc_type, doc_subtype)
 
         fallo_literal = getattr(document, "falloLiteral", None) or getattr(document, "fallbackFallo", None)
-        chunks, truncated = self._build_chunks(full_text, document)
-
         metadata = self._collect_metadata(document)
         parties = self._collect_parties(document)
 
-        # Prepend fallo chunk for stronger grounding
-        if fallo_literal and fallo_literal not in chunks:
-            chunks = [fallo_literal] + chunks
+        payload = self._call_llm(document, doc_type, doc_subtype, fallo_literal, metadata, parties)
+        structured = self._normalize_payload(payload, fallo_literal)
 
-        simplified_parts: List[str] = []
-        for chunk in chunks:
-            part = self._simplify_chunk(
-                chunk,
-                doc_type,
-                doc_subtype,
-                fallo_literal=fallo_literal,
-                metadata=metadata,
-                parties=parties,
-            )
-            if part:
-                simplified_parts.append(part.strip())
-
-        combined_text = "\n\n".join(p for p in simplified_parts if p)
-        combined_text = self._remove_meta_comments(combined_text).strip()
+        simplified_text = self._render_simplified_text(structured, doc_type, doc_subtype)
 
         important_sections = self._important_sections(document)
 
+        # Map structured decision to dict for schema
+        decision_dict = {
+            "whoWins": structured["decisionFallo"]["whoWins"],
+            "costs": structured["decisionFallo"]["costs"],
+            "plainText": structured["decisionFallo"]["plainText"],
+            "falloLiteral": structured["decisionFallo"]["falloLiteral"],
+        }
+
         warnings: List[str] = []
-        if truncated:
-            warnings.append("El documento fue dividido y truncado parcialmente para poder simplificarlo.")
 
         return schemas.SimplificationResult(
-            simplifiedText=combined_text,
+            simplifiedText=simplified_text,
             docType=doc_type,
             docSubtype=doc_subtype,
+            headerSummary=structured["headerSummary"],
+            partiesSummary=structured["partiesSummary"],
+            proceduralContext=structured["proceduralContext"],
+            decisionFallo=decision_dict,
             importantSections=important_sections,
             strategy=strategy,
             provider=self._client.provider_name,
-            truncated=truncated,
+            truncated=False,
             warnings=warnings,
         )
 
     # ------------------------------------------------------------------
-    # Chunking helpers
+    # LLM wrapper
     # ------------------------------------------------------------------
-    def _build_chunks(
+    def _call_llm(
         self,
-        text: str,
         document: schemas.SegmentedDocument,
-    ) -> Tuple[List[str], bool]:
-        """Build chunks respecting document structure and limits."""
-        if len(text) <= self.MAX_CHARS:
-            return [text], False
-
-        chunks: List[str] = []
-        truncated = False
-
-        if document.sections:
-            for section in document.sections:
-                sec_text = (section.content or "").strip()
-                if not sec_text:
-                    continue
-                if len(sec_text) <= self.MAX_CHARS:
-                    chunks.append(sec_text)
-                else:
-                    chunks.extend(self._split_by_paragraphs(sec_text))
-        else:
-            chunks = self._split_by_paragraphs(text)
-
-        safe_chunks: List[str] = []
-        for c in chunks:
-            if len(c) > self.HARD_LIMIT:
-                safe_chunks.append(c[: self.HARD_LIMIT])
-                truncated = True
-            else:
-                safe_chunks.append(c)
-
-        return safe_chunks, truncated
-
-    def _split_by_paragraphs(self, text: str) -> List[str]:
-        """Split text by paragraphs trying to respect MAX_CHARS per chunk."""
-        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-        if not paragraphs:
-            return [text]
-
-        chunks: List[str] = []
-        buffer = ""
-
-        for p in paragraphs:
-            candidate_len = len(buffer) + len(p) + (2 if buffer else 0)
-            if candidate_len <= self.MAX_CHARS:
-                buffer = f"{buffer}\n\n{p}" if buffer else p
-            else:
-                if buffer:
-                    chunks.append(buffer)
-                buffer = p
-
-        if buffer:
-            chunks.append(buffer)
-
-        return chunks
-
-    # ------------------------------------------------------------------
-    # LLM invocation per chunk
-    # ------------------------------------------------------------------
-    def _simplify_chunk(
-        self,
-        chunk: str,
         doc_type: str,
         doc_subtype: str,
-        fallo_literal: str | None = None,
-        metadata: Dict[str, str] | None = None,
-        parties: Dict[str, str] | None = None,
-    ) -> str:
-        """Simplify a single chunk via client or prompt, returning structured text."""
-        prompt_metadata = metadata or {}
-        prompt_parties = parties or {}
-
-        if hasattr(self._client, "simplify") and callable(getattr(self._client, "simplify")):
-            try:
-                return self._client.simplify(chunk, doc_type, doc_subtype)
-            except Exception:
-                pass
+        fallo_literal: str | None,
+        metadata: Dict[str, str],
+        parties: Dict[str, str],
+    ) -> Dict[str, Any]:
+        text = document.normalizedText or document.rawText or ""
+        if len(text) > self.HARD_LIMIT:
+            text = text[: self.HARD_LIMIT]
 
         system = simplification_prompt.system_prompt()
         user = simplification_prompt.user_prompt(
-            chunk,
+            text,
             doc_type=doc_type,
             doc_subtype=doc_subtype,
             fallo_literal=fallo_literal,
-            metadata=prompt_metadata,
-            parties=prompt_parties,
+            metadata=metadata,
+            parties=parties,
         )
 
         try:
-            raw = self._client.chat(system, user, temperature=0.3)
-            return raw
-        except LLMClientError:
-            return chunk
+            raw = self._client.chat(system, user, temperature=0.1)
+            return self._client._parse_json(raw)
         except Exception:
-            return chunk
+            return {}
 
     # ------------------------------------------------------------------
-    # Post-processing helpers
+    # Helpers
     # ------------------------------------------------------------------
-    def _remove_meta_comments(self, text: str) -> str:
-        """
-        Remove common meta-comments if the model adds them.
-        """
-        if not text:
-            return ""
+    def _normalize_payload(self, data: Dict[str, Any], fallo_literal: str | None) -> Dict[str, Any]:
+        """Ensure the JSON structure and enforce determinism from fallo_literal."""
+        if not isinstance(data, dict):
+            data = {}
 
-        META_PATTERNS = [
-            "este texto es una version",
-            "explicacion simplificada",
-            "para conocer el resultado",
-            "nota:",
-        ]
+        header = data.get("headerSummary") or {}
+        parties = data.get("partiesSummary") or {}
+        procedural = data.get("proceduralContext") or ""
+        decision = data.get("decisionFallo") or {}
 
-        lines = text.splitlines()
-        cleaned: List[str] = []
-        for ln in lines:
-            low = ln.lower()
-            if any(pat in low for pat in META_PATTERNS):
-                continue
-            cleaned.append(ln)
+        # Override whoWins / costs deterministically from fallo_literal
+        who, costs = self._derive_decision_from_fallo(fallo_literal)
 
-        out_lines: List[str] = []
-        prev_blank = False
-        for ln in cleaned:
-            is_blank = not ln.strip()
-            if is_blank and prev_blank:
-                continue
-            out_lines.append(ln)
-            prev_blank = is_blank
+        decision_struct = {
+            "whoWins": who,
+            "costs": costs,
+            "plainText": decision.get("plainText") or (fallo_literal or ""),
+            "falloLiteral": fallo_literal or "",
+        }
 
-        return "\n".join(out_lines).strip()
+        return {
+            "headerSummary": {
+                "court": header.get("court", ""),
+                "date": header.get("date", ""),
+                "caseNumber": header.get("caseNumber", ""),
+                "resolutionNumber": header.get("resolutionNumber", ""),
+                "procedureType": header.get("procedureType", ""),
+                "judge": header.get("judge", ""),
+            },
+            "partiesSummary": {
+                "plaintiff": parties.get("plaintiff", ""),
+                "plaintiffRepresentatives": parties.get("plaintiffRepresentatives", ""),
+                "defendant": parties.get("defendant", ""),
+                "defendantRepresentatives": parties.get("defendantRepresentatives", ""),
+            },
+            "proceduralContext": procedural,
+            "decisionFallo": decision_struct,
+        }
+
+    def _derive_decision_from_fallo(self, fallo_literal: str | None) -> Tuple[str, str]:
+        if not fallo_literal:
+            return "desconocido", "desconocido"
+
+        upper = fallo_literal.upper()
+        who = "desconocido"
+        if "SE ESTIMA PARCIAL" in upper or "ESTIMA PARCIAL" in upper:
+            who = "parcial"
+        elif "SE ESTIMA" in upper or "ESTIMA LA DEMANDA" in upper:
+            who = "actora"
+        elif "SE DESESTIMA" in upper or "DESESTIMA LA DEMANDA" in upper or "RECHAZA COMPLETAMENTE" in upper:
+            who = "demandado"
+
+        costs = "desconocido"
+        if "COSTAS A LA PARTE ACTORA" in upper or "COSTAS A LA ACTORA" in upper:
+            costs = "actora"
+        elif "COSTAS A LA PARTE DEMANDADA" in upper or "COSTAS A LA DEMANDADA" in upper:
+            costs = "demandado"
+        elif "SIN ESPECIAL PRONUNCIAMIENTO" in upper:
+            costs = "sin_costas"
+
+        return who.lower(), costs.lower()
+
+    def _render_simplified_text(self, data: Dict[str, Any], doc_type: str, doc_subtype: str) -> str:
+        h = data.get("headerSummary", {})
+        p = data.get("partiesSummary", {})
+        d = data.get("decisionFallo", {})
+
+        lines = []
+        lines.append("[1] Datos del caso")
+        lines.append(f"- Fecha: {h.get('date','')}")
+        lines.append(f"- Juzgado: {h.get('court','')}")
+        lines.append(f"- Jueza/Juez: {h.get('judge','')}")
+        lines.append(f"- Numero de caso: {h.get('caseNumber','')}")
+        lines.append(f"- Numero de resolucion: {h.get('resolutionNumber','')}")
+        lines.append(f"- Tipo de documento: {doc_type} - {doc_subtype}")
+        lines.append("")
+
+        lines.append("[2] Partes involucradas")
+        lines.append(f"- Demandante: {p.get('plaintiff','')}")
+        if p.get("plaintiffRepresentatives"):
+            lines.append(f"  Representantes: {p.get('plaintiffRepresentatives','')}")
+        lines.append(f"- Demandado: {p.get('defendant','')}")
+        if p.get("defendantRepresentatives"):
+            lines.append(f"  Representantes: {p.get('defendantRepresentatives','')}")
+        lines.append("")
+
+        lines.append("[3] Lo que paso antes (contexto procesal)")
+        lines.append(data.get("proceduralContext") or "")
+        lines.append("")
+
+        lines.append("[4] Resultado del caso (segun el FALLO)")
+        lines.append(f"- Quien gana: {d.get('whoWins','desconocido')}")
+        lines.append(f"- Costas: {d.get('costs','desconocido')}")
+        lines.append(f"- Resumen breve: {d.get('plainText','')}")
+        if d.get("falloLiteral"):
+            lines.append("- Fallo literal:")
+            lines.append(d.get("falloLiteral"))
+        lines.append("")
+
+        # Resource info if present
+        return "\n".join(line for line in lines if line is not None).strip()
 
     # ------------------------------------------------------------------
     # Strategy + important sections
@@ -233,7 +225,6 @@ class SimplificationService:
 
     @staticmethod
     def _important_sections(document: schemas.SegmentedDocument) -> List[schemas.DocumentSection]:
-        """Select the most relevant sections for downstream steps."""
         if not document.sections:
             return []
 
@@ -270,41 +261,8 @@ class SimplificationService:
         return selected
 
     # ------------------------------------------------------------------
-    # Decision helpers
+    # Metadata grabbers
     # ------------------------------------------------------------------
-    def _derive_decision_from_fallo(self, fallo_literal: str | None) -> Dict[str, str]:
-        if not fallo_literal:
-            return {
-                "who_wins": "desconocido",
-                "costs": "desconocido",
-                "plain_text": "No se ha localizado la parte dispositiva (fallo) en este documento.",
-                "fallo_literal": "",
-            }
-
-        upper = fallo_literal.upper()
-        who = "desconocido"
-        if "ESTIMA PARCIAL" in upper:
-            who = "parcial"
-        elif "ESTIMA LA DEMANDA" in upper or "SE ESTIMA" in upper:
-            who = "actora"
-        elif "DESESTIMA" in upper or "SE DESESTIMA" in upper:
-            who = "demandado"
-
-        costs = "desconocido"
-        if "COSTAS A LA PARTE ACTORA" in upper:
-            costs = "actora"
-        elif "COSTAS A LA PARTE DEMANDADA" in upper:
-            costs = "demandado"
-        elif "SIN HACER ESPECIAL PRONUNCIAMIENTO SOBRE COSTAS" in upper:
-            costs = "sin_costas"
-
-        return {
-            "who_wins": who,
-            "costs": costs,
-            "plain_text": fallo_literal.strip(),
-            "fallo_literal": fallo_literal.strip(),
-        }
-
     def _collect_metadata(self, document: schemas.SegmentedDocument) -> Dict[str, str]:
         meta = {}
         try:
@@ -313,17 +271,26 @@ class SimplificationService:
             meta["city"] = extra.get("city", "")
             meta["decisionDate"] = extra.get("decisionDate", "")
             meta["caseNumber"] = extra.get("caseNumber", "")
+            meta["resolutionNumber"] = extra.get("resolutionNumber", "")
+            meta["procedureType"] = extra.get("procedureType", "")
             meta["judgeName"] = extra.get("judgeName", "")
         except Exception:
             pass
         return meta
 
     def _collect_parties(self, document: schemas.SegmentedDocument) -> Dict[str, str]:
-        parties: Dict[str, str] = {"plaintiffName": "", "defendantName": ""}
+        parties: Dict[str, str] = {
+            "plaintiffName": "",
+            "plaintiffRepresentatives": "",
+            "defendantName": "",
+            "defendantRepresentatives": "",
+        }
         try:
             extra = getattr(document.metadata, "extra", {}) if document.metadata else {}
             parties["plaintiffName"] = extra.get("plaintiffName", "")
+            parties["plaintiffRepresentatives"] = extra.get("plaintiffRepresentatives", "")
             parties["defendantName"] = extra.get("defendantName", "")
+            parties["defendantRepresentatives"] = extra.get("defendantRepresentatives", "")
         except Exception:
             pass
         return parties

@@ -29,9 +29,33 @@ class SafetyCheckService:
         decision = getattr(simplification, "decisionFallo", None)
         who = ""
         try:
-            who = (decision.whoWins if decision else "") or ""
+            who = (decision.get("whoWins") if isinstance(decision, dict) else getattr(decision, "whoWins", "")) or ""
         except Exception:
             who = ""
+        txt = simplification.simplifiedText.lower() if simplification.simplifiedText else ""
+        found_reject = any(p in txt for p in [
+            "se desestima la demanda",
+            "se desestimará la demanda",
+            "rechaza completamente la demanda",
+            "se rechaza completamente la demanda",
+        ])
+        found_accept = any(p in txt for p in [
+            "se estima la demanda",
+            "se estimará la demanda",
+            "se da la razón a la demandante",
+            "se da la razón a la parte actora",
+        ])
+        critical_issues: List[schemas.SafetyIssue] = []
+        def add_crit(code: str):
+            critical_issues.append(schemas.SafetyIssue(code=code, message=code, severity="critical"))
+        if decision:
+            if who == "actora" and found_reject:
+                add_crit("SUMMARY_FALLO_CONTRADICTION_ACTORA")
+            if who == "demandado" and found_accept:
+                add_crit("SUMMARY_FALLO_CONTRADICTION_DEMANDADO")
+        if found_reject and found_accept:
+            add_crit("SUMMARY_FALLO_INTERNAL_CONTRADICTION")
+
         if who.lower() == "desconocido":
             text_all = ((legal_guide.meaningForYou or "") + " " + (legal_guide.whatToDoNow or "")).lower()
             if (
@@ -41,10 +65,10 @@ class SafetyCheckService:
                 or "te devolver" in text_all
                 or "el banco debe" in text_all
             ):
-                rule_flags.append("GUIDE_ASSERTS_VICTORY_WITHOUT_FALLO")
+                add_crit("GUIDE_ASSERTS_VICTORY_WITHOUT_FALLO")
 
         llm_output = self._call_verifier(original, simplification, legal_guide)
-        issues = [schemas.SafetyIssue(code=flag, message=flag) for flag in rule_flags]
+        issues = [schemas.SafetyIssue(code=flag, message=flag) for flag in rule_flags] + critical_issues
 
         if llm_output:
             issues.extend(

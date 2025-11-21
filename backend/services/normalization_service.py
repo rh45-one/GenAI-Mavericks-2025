@@ -62,27 +62,23 @@ class NormalizationService:
         return segmented
 
     def extract_fallo_literal(self, text: str) -> Optional[str]:
-        """Heuristically extract the literal FALLO section from the normalized text.
-
-        Returns the raw substring corresponding to the fallо (as-is) or None
-        when no clear FALLO section is found.
-        """
+        """Extract the literal FALLO block using common headers and stopwords."""
         if not text:
             return None
 
-        # Look for common uppercase headers that introduce the fallo section.
-        # Match words like 'FALLO', 'FALLÓ', 'RESUELVO', or lines that begin with
-        # RESUELVO/RESUELVE/SE RESUELVE.
-        pattern = re.compile(r"(^|\n)\s*(FALLO|FALL[ÓO]|RESUELVO|RESUELVE|FALLA)[:\s\n]", re.IGNORECASE)
-        m = pattern.search(text)
+        start_pattern = re.compile(
+            r"(FALLO|PARTE DISPOSITIVA|DECISION|DECIDO|RESUELVO)",
+            re.IGNORECASE,
+        )
+        m = start_pattern.search(text)
         if not m:
             return None
-
         start = m.start()
 
-        # Heuristic end: next line that looks like an uppercase section header
-        # (e.g., 'FUNDAMENTOS', 'ANEXO', 'FIRMAS'), or end of text.
-        end_pattern = re.compile(r"\n\s*[A-ZÁÉÍÓÚÑ\s]{3,40}\s*\n")
+        end_pattern = re.compile(
+            r"(PROTECCION DE DATOS|PROTECCI[ÓO]N DE DATOS|FIRMA|FIRM[OA]|M[ÁA]NDO Y FIRMO|NOTIFIQUESE)",
+            re.IGNORECASE,
+        )
         end_match = end_pattern.search(text, pos=m.end())
         end = end_match.start() if end_match else len(text)
 

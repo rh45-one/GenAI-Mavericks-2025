@@ -70,6 +70,10 @@ class SimplificationResult(BaseModel):
     simplifiedText: str
     docType: str
     docSubtype: str
+    headerSummary: Optional[Dict[str, Optional[str]]] = None
+    partiesSummary: Optional[Dict[str, Optional[str]]] = None
+    proceduralContext: Optional[str] = None
+    decisionFallo: Optional[Dict[str, Optional[str]]] = None
     importantSections: List[DocumentSection] = Field(default_factory=list)
     strategy: str = Field(..., description="Which simplification branch was applied.")
     provider: str = Field(..., description="LLM/ML backend used for simplification.")
@@ -111,4 +115,8 @@ class ProcessDocumentResponse(BaseModel):
     docSubtype: Optional[str] = None
     simplifiedText: Optional[str] = None
     legalGuide: Optional[LegalGuide] = None
+    headerSummary: Optional[Dict[str, Optional[str]]] = None
+    partiesSummary: Optional[Dict[str, Optional[str]]] = None
+    proceduralContext: Optional[str] = None
+    decisionFallo: Optional[Dict[str, Optional[str]]] = None
     warnings: List[str] = Field(default_factory=list)

@@ -2,13 +2,19 @@ import { useEffect, useState } from "react";
 import { jsPDF } from "jspdf";
 import { UploadFormPlaceholder } from "./components/UploadFormPlaceholder.jsx";
 import { SafetyAlerts } from "./components/SafetyAlerts.jsx";
+import { SimplifiedTextPanelPlaceholder } from "./components/SimplifiedTextPanelPlaceholder.jsx";
+import { LegalGuidePanelPlaceholder } from "./components/LegalGuidePanelPlaceholder.jsx";
+import { PipelineStatus } from "./components/PipelineStatus.jsx";
 import { processDocument } from "./services/api.js";
 
 const initialResult = {
   simplified_text: "Submit a document to see Justice Made Clear in action.",
   legal_guide: [],
   original_text: "",
-  safety_flags: []
+  safety_flags: [],
+  header_summary: {},
+  parties_summary: {},
+  decision_fallo: {}
 };
 
 const sampleResult = {
@@ -219,12 +225,21 @@ const mapApiResultToState = (apiResult, submissionPayload) => {
 
   const legalGuidePayload = apiResult.legalGuide || apiResult.legal_guide || [];
   const warnings = normalizeWarnings(apiResult);
+  const headerSummary = apiResult.headerSummary || apiResult.header_summary || {};
+  const partiesSummary = apiResult.partiesSummary || apiResult.parties_summary || {};
+  const decisionFallo = apiResult.decisionFallo || apiResult.decision_fallo || {};
+  const proceduralContext =
+    apiResult.proceduralContext || apiResult.procedural_context || apiResult.procedural_contexto || "";
 
   return {
     simplified_text: simplifiedText,
     legal_guide: normalizeLegalGuide(legalGuidePayload),
     original_text: originalText,
-    safety_flags: warnings
+    safety_flags: warnings,
+    header_summary: headerSummary,
+    parties_summary: partiesSummary,
+    decision_fallo: decisionFallo,
+    procedural_context: proceduralContext
   };
 };
 
@@ -233,6 +248,17 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isResultVisible, setIsResultVisible] = useState(false);
+  const [pipelineStatus, setPipelineStatus] = useState("idle");
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const pipelineSteps = [
+    "Ingestando documento…",
+    "Normalizando y segmentando…",
+    "Clasificando el tipo de resolución…",
+    "Simplificando el contenido jurídico…",
+    "Generando guía legal…",
+    "Comprobando seguridad…",
+    "Informe listo."
+  ];
   const initialFlags = getFeatureFlagsFromLocation();
   const [isDebugMode, setIsDebugMode] = useState(initialFlags.debug);
   const [isComicSansMode, setIsComicSansMode] = useState(initialFlags.comicSans);
@@ -453,10 +479,22 @@ export default function App() {
   };
   */
 
+  useEffect(() => {
+    if (pipelineStatus === "running") {
+      const interval = setInterval(() => {
+        setCurrentStepIndex((prev) => (prev < pipelineSteps.length - 2 ? prev + 1 : prev));
+      }, 1200);
+      return () => clearInterval(interval);
+    }
+    return undefined;
+  }, [pipelineStatus]);
+
   const handleSubmit = async (payload) => {
     setIsLoading(true);
     setErrorMessage("");
     setIsResultVisible(true);
+    setPipelineStatus("running");
+    setCurrentStepIndex(0);
     setResult((previous) => ({
       ...previous,
       simplified_text: "Processing document…"
@@ -465,6 +503,8 @@ export default function App() {
     try {
       const apiResult = await processDocument(payload);
       setResult(mapApiResultToState(apiResult, payload));
+      setCurrentStepIndex(pipelineSteps.length - 1);
+      setPipelineStatus("done");
     } catch (error) {
       setErrorMessage(error.message);
       setIsResultVisible(false);
@@ -478,6 +518,8 @@ export default function App() {
     setResult(initialResult);
     setErrorMessage("");
     setIsLoading(false);
+    setPipelineStatus("idle");
+    setCurrentStepIndex(0);
   };
 
   const showHomeState = () => {
@@ -486,6 +528,8 @@ export default function App() {
     setResult(initialResult);
     setErrorMessage("");
     setIsCustomOutputEditorOpen(false);
+    setPipelineStatus("idle");
+    setCurrentStepIndex(0);
   };
 
   const showLoadingState = () => {
@@ -497,6 +541,8 @@ export default function App() {
       simplified_text: "Processing document…"
     }));
     setIsCustomOutputEditorOpen(false);
+    setPipelineStatus("running");
+    setCurrentStepIndex(0);
   };
 
   const showOutputState = () => {
@@ -505,6 +551,8 @@ export default function App() {
     setIsLoading(false);
     setResult(sampleResult);
     setIsCustomOutputEditorOpen(false);
+    setPipelineStatus("done");
+    setCurrentStepIndex(pipelineSteps.length - 1);
   };
 
   const handleExportOutput = () => {
@@ -722,6 +770,28 @@ export default function App() {
           )}
         </div>
       </header>
+      <main className="results-area">
+        {pipelineStatus === "running" && (
+          <PipelineStatus steps={pipelineSteps} currentStepIndex={currentStepIndex} status={pipelineStatus} />
+        )}
+
+        {isResultVisible && pipelineStatus === "done" && (
+          <div className="results-grid">
+            <section className="card">
+              <h2>Simplificación estructurada</h2>
+              <SimplifiedTextPanelPlaceholder result={result} isLoading={isLoading} />
+            </section>
+            <section className="card">
+              <h2>Guía Legal</h2>
+              <LegalGuidePanelPlaceholder guide={result.legal_guide} />
+            </section>
+            <section className="card">
+              <h2>Alertas de seguridad</h2>
+              <SafetyAlerts alerts={result.safety_flags} />
+            </section>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
