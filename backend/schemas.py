@@ -1,7 +1,7 @@
-﻿"""Shared DTOs and schema definitions for the backend pipeline."""
+"""Shared DTOs and schema definitions for the backend pipeline."""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -18,64 +18,94 @@ class DocumentInput(BaseModel):
     )
 
 
-class LegalGuide(BaseModel):
-    """Four-block legal guidance returned to the citizen."""
+class DocumentMetadata(BaseModel):
+    """Common metadata captured during ingestion."""
 
-    meaningForYou: Optional[str] = None
-    whatToDoNow: Optional[str] = None
-    whatHappensNext: Optional[str] = None
-    deadlinesAndRisks: Optional[str] = None
+    sourceType: str
+    language: Optional[str] = None
+    pageCount: Optional[int] = None
+    charLength: Optional[int] = None
+    extra: Dict[str, str] = Field(default_factory=dict)
 
 
-class ProcessedDocument(BaseModel):
-    """Container for the evolving document state through the pipeline."""
+class DocumentSection(BaseModel):
+    """Named section extracted from a legal document."""
 
-    rawText: Optional[str] = None  # Raw text extracted from ingestion/OCR.
-    sections: Optional[List[str]] = None  # Ordered sections detected by normalization.
-    docType: Optional[str] = None  # E.g., RESOLUCION_JURIDICA.
-    docSubtype: Optional[str] = None  # E.g., SENTENCIA.
-    simplifiedText: Optional[str] = None  # Plain-language summary built later.
+    name: str
+    content: Optional[str] = None
+    confidence: Optional[float] = Field(
+        default=None, description="Confidence score from heuristics or ML models."
+    )
 
 
 class IngestResult(BaseModel):
     """Output of IngestService before normalization occurs."""
 
-    rawText: Optional[str] = None
-    metadata: Optional[dict] = None  # Could include detected language, page count, etc.
+    rawText: str
+    metadata: DocumentMetadata
 
 
 class SegmentedDocument(BaseModel):
     """Normalized representation used by classification and simplification."""
 
-    normalizedText: Optional[str] = None
-    sections: Optional[List[str]] = None
+    rawText: str
+    normalizedText: str
+    sections: List[DocumentSection] = Field(default_factory=list)
+    metadata: Optional[DocumentMetadata] = None
 
 
 class ClassificationResult(BaseModel):
-    """LLM-driven classification describing document type and confidence."""
+    """Document type and subtype plus diagnostic information."""
 
-    docType: Optional[str] = None
-    docSubtype: Optional[str] = None
-    confidence: Optional[float] = Field(
-        default=None, description="Classifier confidence or probability score."
-    )
+    docType: str
+    docSubtype: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    source: str = Field(..., description="RULES_ONLY | LLM | HYBRID | ML")
+    explanations: List[str] = Field(default_factory=list)
 
 
 class SimplificationResult(BaseModel):
     """Result of the simplification step, ready for the legal guide."""
 
-    simplifiedText: Optional[str] = None
-    importantSections: Optional[List[str]] = None  # Snippets to feed into the guide prompt.
-    docType: Optional[str] = None
-    docSubtype: Optional[str] = None
+    simplifiedText: str
+    docType: str
+    docSubtype: str
+    headerSummary: Optional[Dict[str, Optional[str]]] = None
+    partiesSummary: Optional[Dict[str, Optional[str]]] = None
+    proceduralContext: Optional[str] = None
+    decisionFallo: Optional[Dict[str, Optional[str]]] = None
+    importantSections: List[DocumentSection] = Field(default_factory=list)
+    strategy: str = Field(..., description="Which simplification branch was applied.")
+    provider: str = Field(..., description="LLM/ML backend used for simplification.")
+    truncated: bool = False
+    warnings: List[str] = Field(default_factory=list)
+
+
+class LegalGuide(BaseModel):
+    """Four-block legal guidance returned to the citizen."""
+
+    meaningForYou: str
+    whatToDoNow: str
+    whatHappensNext: str
+    deadlinesAndRisks: str
+    provider: str = Field(..., description="LLM/ML backend used for legal guide.")
+
+
+class SafetyIssue(BaseModel):
+    """Structured issue produced by the safety checker."""
+
+    code: str
+    message: str
+    severity: str = Field(default="warning")
 
 
 class SafetyCheckResult(BaseModel):
-    """Aggregated view of the rule-based and LLM verification checks."""
+    """Aggregated view of the rule-based and model verification checks."""
 
-    warnings: List[str] = Field(default_factory=list)
-    ruleBasedFindings: Optional[List[str]] = None
-    llmFindings: Optional[List[str]] = None
+    isSafe: bool
+    issues: List[SafetyIssue] = Field(default_factory=list)
+    ruleBasedFlags: List[str] = Field(default_factory=list)
+    llmVerdict: Optional[str] = None
 
 
 class ProcessDocumentResponse(BaseModel):
@@ -85,4 +115,8 @@ class ProcessDocumentResponse(BaseModel):
     docSubtype: Optional[str] = None
     simplifiedText: Optional[str] = None
     legalGuide: Optional[LegalGuide] = None
+    headerSummary: Optional[Dict[str, Optional[str]]] = None
+    partiesSummary: Optional[Dict[str, Optional[str]]] = None
+    proceduralContext: Optional[str] = None
+    decisionFallo: Optional[Dict[str, Optional[str]]] = None
     warnings: List[str] = Field(default_factory=list)

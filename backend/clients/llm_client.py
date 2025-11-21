@@ -1,367 +1,309 @@
-﻿"""LLM client wrapper for Justice Made Clear."""
+"""Provider-agnostic LLM client implementations."""
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+import time
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Sequence
 
 import requests
 
+from .. import schemas
 
-class LLMClient:
-    """
-    Encapsulate all outbound calls to the LLM provider.
+# This value is used only to detect obviously unset keys; keep it unique
+# and never equal to a real credential.
+PLACEHOLDER_API_KEY = "sk-PLACEHOLDER-LLM-API-KEY"
 
-    En esta versión:
-    - Usamos Ollama en local, sin API keys ni servicios externos.
-    - Llamamos al endpoint HTTP: http://localhost:11434/api/chat
-    - Modelo por defecto: 'llama3.1' (configurable via settings).
-    """
+
+class LLMClientError(RuntimeError):
+    """Raised when the LLM provider cannot satisfy a request."""
+
+
+class BaseLLMClient(ABC):
+    """Abstract interface implemented by every model provider."""
 
     def __init__(self, settings: Dict[str, Any]):
-        # URL base de Ollama (por defecto localhost)
-        self.base_url: str = settings.get("base_url", "http://localhost:11434")
-        # Nombre del modelo en Ollama (ej: `llama3.1`, `phi3`, etc.)
-        self.model: str = settings.get("model", "llama3.1")
+        self._settings = settings
+
+    @property
+    @abstractmethod
+    def provider_name(self) -> str:
+        """Return a short identifier for the provider (deepseek, openai, local_legal, etc.)."""
+
+    @abstractmethod
+    def classify(
+        self,
+        text: str,
+        sections: Sequence[str] | None = None,
+    ) -> schemas.ClassificationResult:
+        """Classify the document and return docType/docSubtype/confidence."""
+
+    @abstractmethod
+    def simplify(self, text: str, doc_type: str, doc_subtype: str) -> str:
+        """Return a simplified paraphrase of the supplied document."""
+
+    @abstractmethod
+    def generate_guide(
+        self,
+        simplified_text: str,
+        context: Dict[str, Any],
+    ) -> schemas.LegalGuide:
+        """Generate the standard four-block legal guide."""
+
+    @abstractmethod
+    def verify_safety(
+        self,
+        original_text: str,
+        simplified_text: str,
+        legal_guide: schemas.LegalGuide,
+    ) -> Dict[str, Any]:
+        """Return a dict describing potential safety issues."""
+
+
+class DeepSeekLLMClient(BaseLLMClient):
+    """Concrete implementation backed by DeepSeek's OpenAI-compatible API."""
+
+    def __init__(self, settings: Dict[str, Any]):
+        super().__init__(settings)
+        self._base_url = (settings.get("llm_base_url") or "https://api.deepseek.com").rstrip("/")
+        self._model = settings.get("llm_model_name", "deepseek-chat")
+        self._api_key = settings.get("llm_api_key") or PLACEHOLDER_API_KEY
+        self._timeout = int(settings.get("llm_timeout", 60))
+        self._retries = max(1, int(settings.get("llm_retries", 1)))
+        self._max_tokens = settings.get("llm_max_tokens")
+        self._classification_temperature = float(settings.get("classification_temperature", 0.0))
+        self._simplification_temperature = float(settings.get("simplification_temperature", 0.3))
+        self._guide_temperature = float(settings.get("guide_temperature", 0.25))
+        self._safety_temperature = float(settings.get("safety_temperature", 0.0))
+
+    def chat(self, system_prompt: str, user_prompt: str, temperature: float) -> str:
+        """Provider-agnostic chat entry used by services with centralized prompts."""
+        return self._chat_completion(system_prompt=system_prompt, user_prompt=user_prompt, temperature=temperature)
+
+    @property
+    def provider_name(self) -> str:  # pragma: no cover - trivial property
+        return "deepseek"
 
     # ------------------------------------------------------------------
-    # Helper interno: llamada genérica a Ollama Chat
+    # Public interface
     # ------------------------------------------------------------------
-    def _chat(
+    def classify(
+        self,
+        text: str,
+        sections: Sequence[str] | None = None,
+    ) -> schemas.ClassificationResult:
+        system_prompt = (
+            "Eres un analista jur�dico especializado en documentos espa�oles. "
+            "Debes devolver SIEMPRE un JSON estricto con:\n"
+            '  {"doc_type": "...", "doc_subtype": "...", "confidence": 0-1, "rationale": "..."}\n'
+            "doc_type pertenece a: RESOLUCION_JURIDICA, ESCRITO_PROCESAL, OTRO.\n"
+            "doc_subtype pertenece a: SENTENCIA, AUTO, DECRETO, DEMANDA, RECURSO, ESCRITO, DESCONOCIDO."
+        )
+
+        context_sections = "\n".join(f"- {name}" for name in sections or [])
+        user_prompt = (
+            "Clasifica el siguiente documento. Usa m�x 30 palabras en rationale.\n"
+            f"Secciones detectadas:\n{context_sections or '- (sin secciones detectadas)'}\n\n"
+            f"TEXTO:\n{text[:6000]}"
+        )
+
+        payload = self._chat_completion(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=self._classification_temperature,
+        )
+        data = self._parse_json(payload)
+
+        doc_type = str(data.get("doc_type", "OTRO") or "OTRO").upper()
+        doc_subtype = str(data.get("doc_subtype", "DESCONOCIDO") or "DESCONOCIDO").upper()
+        try:
+            confidence = float(data.get("confidence", 0.5))
+        except (TypeError, ValueError):
+            confidence = 0.5
+        confidence = min(max(confidence, 0.0), 1.0)
+
+        rationale = data.get("rationale") or data.get("reasoning") or ""
+
+        return schemas.ClassificationResult(
+            docType=doc_type,
+            docSubtype=doc_subtype,
+            confidence=confidence,
+            source="LLM",
+            explanations=[rationale] if rationale else [],
+        )
+
+    def simplify(self, text: str, doc_type: str, doc_subtype: str) -> str:
+        system_prompt = (
+            "Eres un asistente jur�dico que reescribe resoluciones y escritos en lenguaje claro. "
+            "Debes mantener plazos, importes y efectos legales. Nunca inventes informaci�n nueva."
+        )
+        user_prompt = (
+            f"Tipo de documento: {doc_type} / {doc_subtype}.\n"
+            "Reescribe el texto siguiente en lenguaje claro para un ciudadano sin formaci�n jur�dica.\n"
+            "TEXTO:\n"
+            f"{text[:8000]}"
+        )
+
+        return self._chat_completion(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=self._simplification_temperature,
+        ).strip()
+
+    def generate_guide(
+        self,
+        simplified_text: str,
+        context: Dict[str, Any],
+    ) -> schemas.LegalGuide:
+        system_prompt = (
+            "Eres un asistente jur�dico que crea una gu�a para ciudadanos. "
+            "Debes responder SIEMPRE en JSON estricto con las claves:\n"
+            "meaning_for_you, what_to_do_now, what_happens_next, deadlines_and_risks."
+        )
+        context_dump = json.dumps(context, ensure_ascii=False, indent=2)
+        user_prompt = (
+            f"Contexto: {context_dump}\n\n"
+            "Redacta la gu�a en frases cortas y accionables usando el texto simplificado como fuente.\n"
+            f"TEXTO SIMPLIFICADO:\n{simplified_text[:6000]}"
+        )
+
+        payload = self._chat_completion(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=self._guide_temperature,
+        )
+        data = self._parse_json(payload)
+
+        return schemas.LegalGuide(
+            meaningForYou=data.get("meaning_for_you")
+            or data.get("meaningForYou")
+            or "No se pudo generar la gu�a.",
+            whatToDoNow=data.get("what_to_do_now") or data.get("whatToDoNow") or "",
+            whatHappensNext=data.get("what_happens_next") or data.get("whatHappensNext") or "",
+            deadlinesAndRisks=data.get("deadlines_and_risks")
+            or data.get("deadlinesAndRisks")
+            or "",
+            provider=self.provider_name,
+        )
+
+    def verify_safety(
+        self,
+        original_text: str,
+        simplified_text: str,
+        legal_guide: schemas.LegalGuide,
+    ) -> Dict[str, Any]:
+        system_prompt = (
+            "Eres un verificador jur�dico. Compara el texto original con el simplificado y la gu�a. "
+            "Devuelve JSON estricto con: is_safe (bool), warnings (lista de strings), verdict (string breve)."
+        )
+        guide_dump = json.dumps(legal_guide.model_dump(), ensure_ascii=False, indent=2)
+        user_prompt = (
+            f"TEXTO ORIGINAL:\n{original_text[:5000]}\n\n"
+            f"TEXTO SIMPLIFICADO:\n{simplified_text[:5000]}\n\n"
+            f"GUIA:\n{guide_dump}"
+        )
+
+        payload = self._chat_completion(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=self._safety_temperature,
+        )
+        data = self._parse_json(payload)
+
+        warnings = data.get("warnings")
+        if not isinstance(warnings, list):
+            warnings = ["El verificador no devolvi� advertencias estructuradas."]
+
+        return {
+            "is_safe": bool(data.get("is_safe", False)),
+            "warnings": [str(item) for item in warnings],
+            "verdict": data.get("verdict") or "",
+            "raw_response": payload,
+        }
+
+    # ------------------------------------------------------------------
+    # HTTP helper
+    # ------------------------------------------------------------------
+    def _chat_completion(
         self,
         system_prompt: str,
         user_prompt: str,
-        temperature: float = 0.2,
+        temperature: float,
     ) -> str:
-        """
-        Hace una llamada al endpoint /api/chat de Ollama y devuelve
-        solo el contenido de la respuesta del asistente.
-        """
-        url = f"{self.base_url}/api/chat"
+        if not self._api_key or self._api_key == PLACEHOLDER_API_KEY:
+            raise LLMClientError(
+                "DeepSeek API key missing. Set LLM_API_KEY or DEEPSEEK_API_KEY."
+            )
+
         payload = {
-            "model": self.model,
+            "model": self._model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "stream": False,
-            "options": {
-                "temperature": temperature,
-            },
+            "temperature": temperature,
+        }
+        if self._max_tokens:
+            payload["max_tokens"] = int(self._max_tokens)
+
+        url = f"{self._base_url}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
         }
 
-        resp = requests.post(url, json=payload, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
+        last_error: Optional[Exception] = None
+        for attempt in range(1, self._retries + 1):
+            try:
+                response = requests.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+                response.raise_for_status()
+                json_payload = response.json()
+                choices = json_payload.get("choices") or []
+                if not choices:
+                    raise LLMClientError("DeepSeek response missing 'choices'.")
+                return choices[0]["message"]["content"]
+            except Exception as exc:  # pragma: no cover - network failure dependent
+                last_error = exc
+                if attempt < self._retries:
+                    time.sleep(0.25 * attempt)
+                continue
 
-        # Formato estándar de /api/chat: { "message": { "content": "..." }, ... }
-        message = data.get("message") or {}
-        content = message.get("content", "")
+        raise LLMClientError(f"DeepSeek request failed: {last_error}")
 
-        return content
-
-    # ------------------------------------------------------------------
-    # 1) Clasificación de documento
-    # ------------------------------------------------------------------
-   
-
-    def callClassifier(
-        self,
-        text: str,
-        sections: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+    def _parse_json(self, payload: str) -> Dict[str, Any]:
+        """Parse JSON strictly by default. If the client settings enable
+        tolerant parsing (settings['tolerant_parse']=True), attempt to extract
+        a JSON object from surrounding text or code fences.
         """
-        Classify the document type/subtype and return confidences.
+        if not isinstance(payload, str):
+            raise LLMClientError("LLM response was not a string payload")
 
-        Devuelve un dict:
-        {
-          "doc_type": "RESOLUCION_JURIDICA" | "ESCRITO_PROCESAL" | "OTRO",
-          "doc_subtype": "SENTENCIA" | "AUTO" | "DEMANDA" | "RECURSO" | "DESCONOCIDO",
-          "confidence": float,
-          "raw_response": str
-        }
-
-        Estrategia:
-        - 1º aplicamos reglas duras muy sencillas sobre el texto.
-        - 2º, si hay duda, preguntamos al LLM.
-        - 3º, si el LLM devuelve algo raro, nos quedamos con el fallback de reglas.
-        """
-        snippet = text[:8000]  # suficiente para ver encabezados importantes
-        upper = snippet.upper()
-
-        # -----------------------------
-        # 1) Heurísticas base por texto
-        # -----------------------------
-        print("🟦DEBUG snippet:", repr(snippet))
-        print("🟥DEBUG upper:", repr(upper))
-        is_resolucion = any(
-            kw in upper
-            for kw in [
-                "SENTENCIA",
-                "AUTO",
-                "FALLO",
-                "FUNDAMENTOS DE DERECHO",
-                "ANTECEDENTES DE HECHO",
-                "JUZGADO DE PRIMERA INSTANCIA",
-                "MAGISTRADO",
-                "MAGISTRADA",
-                "JUZGADO DE 1ª INSTANCIA",
-            ]
-        )
-
-        is_escrito = any(
-            kw in upper
-            for kw in [
-                "SUPLICO AL JUZGADO",
-                "AL JUZGADO",
-                "AL JUZGADO DE",
-                "DEMANDA",
-                "RECURSO",
-                "ESCRITO DE ALEGACIONES",
-                "ESCRITO DE OPOSICIÓN",
-            ]
-        )
-
-        rule_doc_type = "OTRO"
-        rule_doc_subtype = "DESCONOCIDO"
-        rule_conf = 0.0
-
-        if is_resolucion and not is_escrito:
-            rule_doc_type = "RESOLUCION_JURIDICA"
-            if "SENTENCIA" in upper:
-                rule_doc_subtype = "SENTENCIA"
-            elif "AUTO" in upper:
-                rule_doc_subtype = "AUTO"
-            rule_conf = 0.9
-
-        elif is_escrito and not is_resolucion:
-            rule_doc_type = "ESCRITO_PROCESAL"
-            if "DEMANDA" in upper:
-                rule_doc_subtype = "DEMANDA"
-            elif "RECURSO" in upper:
-                rule_doc_subtype = "RECURSO"
-            rule_conf = 0.9
-
-        # Si las reglas ya lo tienen bastante claro, puedes incluso devolver directamente:
-        if rule_conf >= 0.9:
-            return {
-                "doc_type": rule_doc_type,
-                "doc_subtype": rule_doc_subtype,
-                "confidence": rule_conf,
-                "raw_response": "RULE_BASED",
-            }
-
-        # ---------------------------------
-        # 2) Si no está claro, preguntamos LLM
-        # ---------------------------------
-        system_prompt = (
-            "Eres un asistente LEGAL EXPERTO en documentos judiciales de ESPAÑA.\n"
-            "Debes CLASIFICAR el documento en una de estas categorías:\n"
-            "\n"
-            "1) RESOLUCION_JURIDICA → documentos emitidos por un juzgado.\n"
-            "   Subtipos: SENTENCIA, AUTO, DECRETO, PROVIDENCIA.\n"
-            "2) ESCRITO_PROCESAL → documentos presentados por las partes.\n"
-            "   Subtipos: DEMANDA, RECURSO, ALEGACIONES, OPOSICION.\n"
-            "3) OTRO → si no encaja.\n"
-            "\n"
-            "Instrucciones:\n"
-            "- Responde SIEMPRE en JSON estricto.\n"
-            "- NO añadas explicaciones.\n"
-            "- Usa doc_subtype='DESCONOCIDO' si no estás seguro.\n"
-        )
-
-        user_prompt = f"""Analiza el siguiente texto y clasifícalo:
-
---- DOCUMENTO ---
-{snippet}
---- FIN DOCUMENTO ---
-
-Devuelve SOLO un JSON con esta forma:
-{{
-  "doc_type": "...",
-  "doc_subtype": "...",
-  "confidence": 0.0
-}}"""
-
+        p = payload.strip()
+        # Strict parse first
         try:
-            raw = self._chat(system_prompt, user_prompt, temperature=0.0)
-            data = json.loads(raw)
-        except Exception:
-            # Si el LLM falla, volvemos a lo que hayan dicho las reglas
-            return {
-                "doc_type": rule_doc_type,
-                "doc_subtype": rule_doc_subtype,
-                "confidence": rule_conf,
-                "raw_response": "RULE_FALLBACK",
-            }
-
-        doc_type = data.get("doc_type", "OTRO")
-        doc_subtype = data.get("doc_subtype", "DESCONOCIDO")
-        confidence = float(data.get("confidence", 0.0))
-
-        # ---------------------------------
-        # 3) Ajuste final con reglas
-        # ---------------------------------
-        # Si LLM dice algo raro pero las reglas detectan clarísimamente SENTENCIA:
-        if rule_conf > confidence:
-            doc_type = rule_doc_type
-            doc_subtype = rule_doc_subtype
-            confidence = rule_conf
-            raw_response = f"LLM:{data} | APPLIED_RULE_OVERRIDE"
-        else:
-            raw_response = raw
-
-        return {
-            "doc_type": doc_type,
-            "doc_subtype": doc_subtype,
-            "confidence": confidence,
-            "raw_response": raw_response,
-        }
-    # ------------------------------------------------------------------
-    # 2) Simplificación en lenguaje claro
-    # ------------------------------------------------------------------
-    def callSimplifier(self, text: str, doc_type: str, doc_subtype: str) -> str:
-        """
-        Simplify the source document based on its classification.
-        - Mantener sentido juridico, plazos, importes y partes.
-        - Reescribir en lenguaje claro.
-        """
-        system_prompt = (
-            "Eres un asistente especializado en redaccion judicial clara en España.\n"
-            "Tu tarea es reescribir el texto jurídico en lenguaje claro, "
-            "SIN CAMBIAR el significado jurídico, las partes, los plazos, "
-            "las cantidades ni el sentido del fallo.\n"
-            "Usa frases cortas, orden lógico, evita tecnicismos innecesarios, "
-            "y si mantienes un tecnicismo importante, explícalo brevemente.\n"
-            "MUY IMPORTANTE: responde SOLO con el texto reescrito, "
-            "sin explicaciones adicionales, sin comillas, sin saludos.\n"
-        )
-
-        user_prompt = f"""Tipo de documento: {doc_type} / {doc_subtype}
-
-Reescribe el siguiente texto jurídico en lenguaje claro para una persona sin formación jurídica.
-No añadas información nueva ni elimines plazos o derechos.
-
---- TEXTO ORIGINAL ---
-{text}
---- FIN TEXTO ---"""
-
-        simplified = self._chat(system_prompt, user_prompt, temperature=0.3)
-        return simplified
-
-    # ------------------------------------------------------------------
-    # 3) Generación de la guía jurídica (4 bloques)
-    # ------------------------------------------------------------------
-    def callGuideGenerator(
-        self,
-        simplified_text: str,
-        sections: Optional[List[str]] = None,
-    ) -> Dict[str, str]:
-        """
-        Generate the four guide blocks from simplified text and references.
-
-        Devuelve un dict:
-        {
-          "meaning_for_you": "...",
-          "what_to_do_now": "...",
-          "what_happens_next": "...",
-          "deadlines_and_risks": "..."
-        }
-        """
-        system_prompt = (
-            "Eres un asistente jurídico que explica resoluciones y escritos judiciales "
-            "a ciudadanos en España.\n"
-            "A partir del texto simplificado, debes generar una guia en 4 bloques.\n"
-            "Responde SIEMPRE en JSON estricto con las claves:\n"
-            "  meaning_for_you, what_to_do_now, what_happens_next, deadlines_and_risks.\n"
-        )
-
-        user_prompt = f"""Usa el siguiente texto simplificado como base:
-
---- TEXTO SIMPLIFICADO ---
-{simplified_text}
---- FIN TEXTO SIMPLIFICADO ---
-
-Devuelve SOLO un JSON con esta forma:
-{{
-  "meaning_for_you": "...",
-  "what_to_do_now": "...",
-  "what_happens_next": "...",
-  "deadlines_and_risks": "..."
-}}"""
-
-        raw = self._chat(system_prompt, user_prompt, temperature=0.2)
-
-        try:
-            data = json.loads(raw)
+            return json.loads(p)
         except json.JSONDecodeError:
-            data = {
-                "meaning_for_you": "No se ha podido generar la explicación correctamente.",
-                "what_to_do_now": "",
-                "what_happens_next": "",
-                "deadlines_and_risks": "",
-            }
+            # If tolerant parsing is enabled in settings, try to extract the
+            # first JSON object within the string (handles code fences).
+            if self._settings.get("tolerant_parse"):
+                cleaned = p.strip()
+                # Remove common code fences like ```json ... ```
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.strip("`")
+                start = cleaned.find("{")
+                end = cleaned.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    candidate = cleaned[start : end + 1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        pass
 
-        return data
-
-    # ------------------------------------------------------------------
-    # 4) Verificación de seguridad jurídica
-    # ------------------------------------------------------------------
-    def callVerifier(
-        self,
-        original_text: str,
-        simplified_text: str,
-        legal_guide: Dict[str, str],
-    ) -> Dict[str, Any]:
-        """
-        Ask the LLM to confirm that critical meaning remains intact.
-
-        Devuelve:
-        {
-          "is_safe": bool,
-          "warnings": [str, ...],
-          "raw_response": str
-        }
-        """
-        system_prompt = (
-            "Eres un revisor jurídico. Debes comparar el texto original, "
-            "el texto simplificado y la guía para el ciudadano.\n"
-            "Tu objetivo es detectar si se ha perdido información clave: plazos, importes, "
-            "obligaciones o el sentido del fallo.\n"
-            "Responde SIEMPRE en JSON estricto con:\n"
-            "  is_safe: true/false\n"
-            "  warnings: lista de strings explicando posibles problemas.\n"
-        )
-
-        user_prompt = f"""TEXTO ORIGINAL:
---- ORIGINAL ---
-{original_text}
---- FIN ORIGINAL ---
-
-TEXTO SIMPLIFICADO:
---- SIMPLIFICADO ---
-{simplified_text}
---- FIN SIMPLIFICADO ---
-
-GUIA PARA EL CIUDADANO:
---- GUIA ---
-{json.dumps(legal_guide, ensure_ascii=False)}
---- FIN GUIA ---
-
-Devuelve SOLO un JSON con esta forma:
-{{
-  "is_safe": true,
-  "warnings": ["..."]
-}}"""
-
-        raw = self._chat(system_prompt, user_prompt, temperature=0.0)
-
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            data = {
-                "is_safe": False,
-                "warnings": ["No se ha podido verificar correctamente el significado."],
-            }
-
-        data["raw_response"] = raw
-        return data
+        # If we reach here, parsing failed — include a short snippet for debugging
+        snippet = (p or "")[:600]
+        raise LLMClientError(f"LLM response was not valid JSON. Snippet: {snippet}")

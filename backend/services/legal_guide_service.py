@@ -1,96 +1,87 @@
-﻿"""Legal guide generation service."""
+"""Legal guide generation service using simplified text and optional decision hints."""
 from __future__ import annotations
 
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict
 
 from .. import schemas
-from ..clients import llm_client
+from ..clients.llm_client import BaseLLMClient, LLMClientError
+from ..prompt_templates import legal_guide as legal_guide_prompt
 
 
 class LegalGuideService:
     """Create a four-block LegalGuide DTO from simplified content."""
 
-    def __init__(self, client: llm_client.LLMClient):
+    def __init__(self, client: BaseLLMClient):
         self._client = client
 
-    def buildGuide(self, simplification_result: schemas.SimplificationResult) -> schemas.LegalGuide:
-        """
-        Call LLMClient.callGuideGenerator with structured context.
+    def build_guide(
+        self,
+        document: schemas.SegmentedDocument,
+        classification: schemas.ClassificationResult,
+        simplification_result: schemas.SimplificationResult,
+    ) -> schemas.LegalGuide:
+        context: Dict[str, Any] = {
+            "doc_type": classification.docType,
+            "doc_subtype": classification.docSubtype,
+        }
 
-        - Usa simplifiedText como base.
-        - Añade contexto de docType / docSubtype.
-        - Pasa las importantSections como pista de secciones clave.
-        - Mapea el JSON del LLM al modelo LegalGuide (camelCase).
-        """
+        decision = getattr(simplification_result, "decisionFallo", None)
+        decision_dict = {}
+        if decision:
+            decision_dict = {
+                "whoWins": getattr(decision, "whoWins", ""),
+                "costs": getattr(decision, "costs", ""),
+                "plainText": getattr(decision, "plainText", ""),
+                "falloLiteral": getattr(decision, "originalFalloQuote", ""),
+            }
 
-        # 1) Texto simplificado base
-        simplified = (simplification_result.simplifiedText or "").strip()
-
-        if not simplified:
-            # Fallback: no hay nada que explicar
-            return schemas.LegalGuide(
-                meaningForYou="No se ha podido generar la guía jurídica porque falta texto simplificado.",
-                whatToDoNow=None,
-                whatHappensNext=None,
-                deadlinesAndRisks=None,
-            )
-
-        # 2) Contexto de tipo de documento
-        doc_type = simplification_result.docType or "DESCONOCIDO"
-        doc_subtype = simplification_result.docSubtype or "DESCONOCIDO"
-
-        # 3) Construimos un "super texto" para el LLM, con algo de contexto
-        #    (aunque LLMClient.callGuideGenerator solo recibe un string, aquí
-        #     le pasamos docType/docSubtype arriba y luego el texto).
-        text_for_llm = (
-            f"Tipo de documento: {doc_type} / {doc_subtype}\n\n"
-            f"TEXTO SIMPLIFICADO PARA EL CIUDADANO:\n{simplified}"
-        )
-
-        # 4) Secciones importantes (pueden venir de SimplificationResult)
-        sections: Optional[List[str]] = simplification_result.importantSections or None
-
-        # 5) Llamamos al LLM y manejamos errores
+        meta_dict: Dict[str, str] = {}
         try:
-            guide_dict: Dict[str, Any] = self._client.callGuideGenerator(
-                simplified_text=text_for_llm,
-                sections=sections,
-            )
-        except Exception as e:
-            # Fallback si algo peta en la llamada al LLM
-            return schemas.LegalGuide(
-                meaningForYou="Ha ocurrido un error al generar la guía jurídica.",
-                whatToDoNow=f"Detalle técnico: {e}",
-                whatHappensNext=None,
-                deadlinesAndRisks=None,
-            )
+            extra = getattr(document.metadata, "extra", {}) if document.metadata else {}
+            meta_dict = {
+                "courtName": extra.get("courtName", ""),
+                "decisionDate": extra.get("decisionDate", ""),
+                "caseNumber": extra.get("caseNumber", ""),
+            }
+        except Exception:
+            meta_dict = {}
 
-        # 6) Mapeo snake_case → camelCase con un poco de tolerancia
-        meaning_for_you = (
-            guide_dict.get("meaning_for_you")
-            or guide_dict.get("meaningForYou")
-            or "No se ha podido generar la explicación principal."
-        )
-        what_to_do_now = (
-            guide_dict.get("what_to_do_now")
-            or guide_dict.get("whatToDoNow")
-            or None
-        )
-        what_happens_next = (
-            guide_dict.get("what_happens_next")
-            or guide_dict.get("whatHappensNext")
-            or None
-        )
-        deadlines_and_risks = (
-            guide_dict.get("deadlines_and_risks")
-            or guide_dict.get("deadlinesAndRisks")
-            or None
-        )
+        try:
+            if hasattr(self._client, "generate_guide") and callable(getattr(self._client, "generate_guide")):
+                res = self._client.generate_guide(simplification_result.simplifiedText, {**context, **decision_dict, **meta_dict})
+                if isinstance(res, schemas.LegalGuide):
+                    return res
+                data = res
+            else:
+                system = legal_guide_prompt.system_prompt()
+                user = legal_guide_prompt.user_prompt(
+                    simplification_result.simplifiedText, context, decision_dict, meta_dict
+                )
+                raw = self._client.chat(system, user, temperature=0.2)
+                data = self._client._parse_json(raw)
+        except LLMClientError:
+            return self._fallback(meta_dict)
+        except Exception:
+            return self._fallback(meta_dict)
 
-        # 7) Devolvemos el DTO de dominio
+        meaning = data.get("meaning_for_you") or data.get("meaningForYou") or ""
+        todo = data.get("what_to_do_now") or data.get("whatToDoNow") or ""
+        next_ = data.get("what_happens_next") or data.get("whatHappensNext") or ""
+        deadlines = data.get("deadlines_and_risks") or data.get("deadlinesAndRisks") or ""
+
         return schemas.LegalGuide(
-            meaningForYou=meaning_for_you,
-            whatToDoNow=what_to_do_now,
-            whatHappensNext=what_happens_next,
-            deadlinesAndRisks=deadlines_and_risks,
+            meaningForYou=meaning or "Revisa la resolucion con ayuda profesional para entender sus efectos.",
+            whatToDoNow=todo or "Consulta con tu abogado que obligaciones y derechos se derivan del fallo.",
+            whatHappensNext=next_ or "Dependiendo del fallo, puede existir recurso; asesora sobre si conviene recurrir.",
+            deadlinesAndRisks=deadlines or "No se identifican plazos claros en el fallo; confirma posibles plazos legales generales.",
+            provider=self._client.provider_name,
+        )
+
+    def _fallback(self, meta: Dict[str, str]) -> schemas.LegalGuide:
+        return schemas.LegalGuide(
+            meaningForYou="Revisa la resolucion con ayuda profesional para entender sus efectos.",
+            whatToDoNow="Consulta con tu abogado que obligaciones y derechos se derivan del fallo.",
+            whatHappensNext="Dependiendo del fallo, puede existir recurso; asesora sobre si conviene recurrir.",
+            deadlinesAndRisks="No se identifican plazos claros en el fallo; confirma posibles plazos legales generales.",
+            provider=self._client.provider_name,
         )

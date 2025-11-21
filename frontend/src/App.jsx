@@ -2,13 +2,19 @@ import { useEffect, useState } from "react";
 import { jsPDF } from "jspdf";
 import { UploadFormPlaceholder } from "./components/UploadFormPlaceholder.jsx";
 import { SafetyAlerts } from "./components/SafetyAlerts.jsx";
+import { SimplifiedTextPanelPlaceholder } from "./components/SimplifiedTextPanelPlaceholder.jsx";
+import { LegalGuidePanelPlaceholder } from "./components/LegalGuidePanelPlaceholder.jsx";
+import { PipelineStatus } from "./components/PipelineStatus.jsx";
 import { processDocument } from "./services/api.js";
 
 const initialResult = {
   simplified_text: "Submit a document to see Justice Made Clear in action.",
   legal_guide: [],
   original_text: "",
-  safety_flags: []
+  safety_flags: [],
+  header_summary: {},
+  parties_summary: {},
+  decision_fallo: {}
 };
 
 const sampleResult = {
@@ -126,23 +132,115 @@ const getFeatureFlagsFromLocation = () => {
   };
 };
 
+const LEGAL_GUIDE_LABELS = {
+  meaningForYou: "What this means",
+  whatToDoNow: "What to do now",
+  whatHappensNext: "What happens next",
+  deadlinesAndRisks: "Deadlines & risks"
+};
+
+const hasText = (value) => typeof value === "string" && value.trim().length > 0;
+const SHOW_SAFETY_ALERTS = false;
+
 const normalizeLegalGuide = (guidePayload) => {
+  if (!guidePayload) {
+    return [];
+  }
+
   if (Array.isArray(guidePayload)) {
     return guidePayload;
   }
 
-  if (guidePayload && typeof guidePayload === "object") {
-    return Object.entries(guidePayload).map(([key, value]) => ({
-      category: key,
-      title: value?.title || key.replace(/([A-Z])/g, " $1").trim(),
-      description:
-        typeof value === "string"
-          ? value
-          : value?.description || "More details coming soon."
-    }));
+  if (typeof guidePayload === "object") {
+    return Object.entries(guidePayload).map(([key, value]) => {
+      const friendlyTitle = LEGAL_GUIDE_LABELS[key] || key.replace(/([A-Z])/g, " $1").trim();
+      if (typeof value === "string") {
+        return {
+          category: key,
+          title: friendlyTitle,
+          description: value || "More details coming soon."
+        };
+      }
+      return {
+        category: key,
+        title: value?.title || friendlyTitle,
+        description: value?.description || "More details coming soon."
+      };
+    });
   }
 
   return [];
+};
+
+const normalizeWarnings = (payload) => {
+  const warnings = [];
+  const pushArray = (value) => {
+    if (!value) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => pushArray(item));
+      return;
+    }
+    if (typeof value === "object" && value?.message) {
+      warnings.push(String(value.message));
+      return;
+    }
+    warnings.push(String(value));
+  };
+
+  pushArray(payload?.warnings);
+  pushArray(payload?.safety_flags);
+  pushArray(payload?.safetyFlags);
+  pushArray(payload?.issues);
+
+  const deduped = [];
+  const seen = new Set();
+  warnings.forEach((warning) => {
+    const trimmed = warning.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    seen.add(trimmed);
+        deduped.push(trimmed);
+  });
+  return deduped;
+};
+
+const mapApiResultToState = (apiResult, submissionPayload) => {
+  if (!apiResult || typeof apiResult !== "object") {
+    return initialResult;
+  }
+
+  const simplifiedText =
+    (hasText(apiResult.simplifiedText) && apiResult.simplifiedText.trim()) ||
+    (hasText(apiResult.simplified_text) && apiResult.simplified_text.trim()) ||
+    initialResult.simplified_text;
+
+  const originalText =
+    (hasText(apiResult.originalText) && apiResult.originalText.trim()) ||
+    (hasText(apiResult.original_text) && apiResult.original_text.trim()) ||
+    (hasText(submissionPayload?.textInput) && submissionPayload.textInput.trim()) ||
+    "";
+
+  const legalGuidePayload = apiResult.legalGuide || apiResult.legal_guide || [];
+  const warnings = normalizeWarnings(apiResult);
+  const headerSummary = apiResult.headerSummary || apiResult.header_summary || {};
+  const partiesSummary = apiResult.partiesSummary || apiResult.parties_summary || {};
+  const decisionFallo = apiResult.decisionFallo || apiResult.decision_fallo || {};
+  const proceduralContext =
+    apiResult.proceduralContext || apiResult.procedural_context || apiResult.procedural_contexto || "";
+
+  return {
+    simplified_text: simplifiedText,
+    legal_guide: normalizeLegalGuide(legalGuidePayload),
+    original_text: originalText,
+    safety_flags: warnings,
+    header_summary: headerSummary,
+    parties_summary: partiesSummary,
+    decision_fallo: decisionFallo,
+    procedural_context: proceduralContext
+  };
 };
 
 export default function App() {
@@ -150,6 +248,17 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isResultVisible, setIsResultVisible] = useState(false);
+  const [pipelineStatus, setPipelineStatus] = useState("idle");
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const pipelineSteps = [
+    "Ingestando documento…",
+    "Normalizando y segmentando…",
+    "Clasificando el tipo de resolución…",
+    "Simplificando el contenido jurídico…",
+    "Generando guía legal…",
+    "Comprobando seguridad…",
+    "Informe listo."
+  ];
   const initialFlags = getFeatureFlagsFromLocation();
   const [isDebugMode, setIsDebugMode] = useState(initialFlags.debug);
   const [isComicSansMode, setIsComicSansMode] = useState(initialFlags.comicSans);
@@ -370,10 +479,22 @@ export default function App() {
   };
   */
 
+  useEffect(() => {
+    if (pipelineStatus === "running") {
+      const interval = setInterval(() => {
+        setCurrentStepIndex((prev) => (prev < pipelineSteps.length - 2 ? prev + 1 : prev));
+      }, 1200);
+      return () => clearInterval(interval);
+    }
+    return undefined;
+  }, [pipelineStatus]);
+
   const handleSubmit = async (payload) => {
     setIsLoading(true);
     setErrorMessage("");
     setIsResultVisible(true);
+    setPipelineStatus("running");
+    setCurrentStepIndex(0);
     setResult((previous) => ({
       ...previous,
       simplified_text: "Processing document…"
@@ -381,12 +502,9 @@ export default function App() {
 
     try {
       const apiResult = await processDocument(payload);
-      setResult({
-        simplified_text: apiResult.simplified_text || initialResult.simplified_text,
-        legal_guide: normalizeLegalGuide(apiResult.legal_guide),
-        original_text: apiResult.original_text || payload.textInput || "",
-        safety_flags: apiResult.safety_flags || []
-      });
+      setResult(mapApiResultToState(apiResult, payload));
+      setCurrentStepIndex(pipelineSteps.length - 1);
+      setPipelineStatus("done");
     } catch (error) {
       setErrorMessage(error.message);
       setIsResultVisible(false);
@@ -400,6 +518,8 @@ export default function App() {
     setResult(initialResult);
     setErrorMessage("");
     setIsLoading(false);
+    setPipelineStatus("idle");
+    setCurrentStepIndex(0);
   };
 
   const showHomeState = () => {
@@ -408,6 +528,8 @@ export default function App() {
     setResult(initialResult);
     setErrorMessage("");
     setIsCustomOutputEditorOpen(false);
+    setPipelineStatus("idle");
+    setCurrentStepIndex(0);
   };
 
   const showLoadingState = () => {
@@ -419,6 +541,8 @@ export default function App() {
       simplified_text: "Processing document…"
     }));
     setIsCustomOutputEditorOpen(false);
+    setPipelineStatus("running");
+    setCurrentStepIndex(0);
   };
 
   const showOutputState = () => {
@@ -427,6 +551,8 @@ export default function App() {
     setIsLoading(false);
     setResult(sampleResult);
     setIsCustomOutputEditorOpen(false);
+    setPipelineStatus("done");
+    setCurrentStepIndex(pipelineSteps.length - 1);
   };
 
   const handleExportOutput = () => {
@@ -585,7 +711,7 @@ export default function App() {
             onReset={handleReset}
           />
           {errorMessage && <p className="error-text">{errorMessage}</p>}
-          {isResultVisible && <SafetyAlerts alerts={result.safety_flags} />}
+          {SHOW_SAFETY_ALERTS && isResultVisible && <SafetyAlerts alerts={result.safety_flags} />}
           {isDebugMode && (
             <div className="debug-controls">
               <p>Debug screens</p>
@@ -644,6 +770,28 @@ export default function App() {
           )}
         </div>
       </header>
+      <main className="results-area">
+        {pipelineStatus === "running" && (
+          <PipelineStatus steps={pipelineSteps} currentStepIndex={currentStepIndex} status={pipelineStatus} />
+        )}
+
+        {isResultVisible && pipelineStatus === "done" && (
+          <div className="results-grid">
+            <section className="card">
+              <h2>Simplificación estructurada</h2>
+              <SimplifiedTextPanelPlaceholder result={result} isLoading={isLoading} />
+            </section>
+            <section className="card">
+              <h2>Guía Legal</h2>
+              <LegalGuidePanelPlaceholder guide={result.legal_guide} />
+            </section>
+            <section className="card">
+              <h2>Alertas de seguridad</h2>
+              <SafetyAlerts alerts={result.safety_flags} />
+            </section>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

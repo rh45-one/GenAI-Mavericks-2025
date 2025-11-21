@@ -1,106 +1,128 @@
-﻿"""Text normalization and sectioning helpers."""
+"""Text normalization and sectioning helpers."""
 from __future__ import annotations
 
 import re
-from typing import List
+from typing import Dict, List, Tuple, Optional
 
 from .. import schemas
+from ..utils import text_cleaning
+
+SECTION_KEYWORDS: Dict[str, List[str]] = {
+    "ENCABEZADO": [
+        "JUZGADO",
+        "MAGISTRADO",
+        "AUDIENCIA PROVINCIAL",
+        "TRIBUNAL SUPERIOR",
+    ],
+    "ANTECEDENTES DE HECHO": ["ANTECEDENTES DE HECHO", "ANTECEDENTES"],
+    "FUNDAMENTOS DE DERECHO": ["FUNDAMENTOS DE DERECHO", "FUNDAMENTOS JURIDICOS"],
+    "FALLO": ["FALLO", "RESUELVO"],
+    "PETICIONES": ["SUPLICO", "SOLICITO", "PETICION"],
+}
 
 
 class NormalizationService:
     """Clean extracted text and produce structured sections."""
 
-    # ---------------------------------------------------------
-    # 1) NORMALIZAR TEXTO
-    # ---------------------------------------------------------
-    def normalizeText(self, ingest_result: schemas.IngestResult) -> schemas.SegmentedDocument:
-        """
-        Apply basic cleaning to the raw text:
-        - Normaliza saltos de línea (\r\n, \r → \n).
-        - Elimina espacios en blanco al inicio/fin de línea.
-        - Colapsa líneas vacías múltiples.
-        - Deja el texto en normalizedText.
-        """
-        raw = ingest_result.rawText or ""
+    def normalize(self, ingest_result: schemas.IngestResult) -> schemas.SegmentedDocument:
+        """Clean OCR output using deterministic rules and detect sections."""
+        raw_text = ingest_result.rawText
+        if not raw_text:
+            raise ValueError("Ingest result is empty.")
 
-        # 1) Normalizar saltos de línea
-        text = raw.replace("\r\n", "\n").replace("\r", "\n")
+        cleaned = text_cleaning.sanitize_characters(raw_text)
+        cleaned = text_cleaning.remove_repeated_headers(cleaned)
+        cleaned = text_cleaning.normalize_whitespace(cleaned)
 
-        # 2) Quitar espacios al principio y final de cada línea
-        lines: List[str] = [line.strip() for line in text.split("\n")]
+        sections = self._segment_sections(cleaned)
 
-        # 3) Colapsar múltiples líneas vacías en una sola
-        cleaned_lines: List[str] = []
-        empty_streak = 0
-        for line in lines:
-            if line == "":
-                empty_streak += 1
-                # Permitimos como mucho una línea vacía seguida
-                if empty_streak > 1:
-                    continue
-            else:
-                empty_streak = 0
-            cleaned_lines.append(line)
+        fallo = self.extract_fallo_literal(cleaned)
+        if ingest_result.metadata is None:
+            ingest_result.metadata = None
+        try:
+            if ingest_result.metadata is not None:
+                extra = getattr(ingest_result.metadata, "extra", None)
+                if extra is None:
+                    ingest_result.metadata.extra = {}
+                if fallo:
+                    ingest_result.metadata.extra["falloLiteral"] = fallo
+        except Exception:
+            pass
 
-        normalized = "\n".join(cleaned_lines).strip()
-
-        # De momento aún no segmentamos secciones: eso se hace en segmentSections()
-        return schemas.SegmentedDocument(
-            normalizedText=normalized,
-            sections=None,
+        segmented = schemas.SegmentedDocument(
+            rawText=raw_text,
+            normalizedText=cleaned,
+            sections=sections,
+            metadata=ingest_result.metadata,
         )
+        try:
+            setattr(segmented, "falloLiteral", fallo)
+        except Exception:
+            pass
+        return segmented
 
-    # ---------------------------------------------------------
-    # 2) DETECTAR SECCIONES (muy simple pero útil)
-    # ---------------------------------------------------------
-    def segmentSections(self, normalized_document: schemas.SegmentedDocument) -> schemas.SegmentedDocument:
-        """
-        Detect typical sections (for Spanish court decisions) and store their names in `sections`.
+    def extract_fallo_literal(self, text: str) -> Optional[str]:
+        """Extract the literal FALLO block using common headers and stopwords."""
+        if not text:
+            return None
 
-        No troceamos el texto aquí (tu schema solo tiene List[str]), simplemente
-        detectamos qué secciones parecen estar presentes en el texto:
+        start_pattern = re.compile(
+            r"(FALLO|PARTE DISPOSITIVA|DECISION|DECIDO|RESUELVO)",
+            re.IGNORECASE,
+        )
+        m = start_pattern.search(text)
+        if not m:
+            return None
+        start = m.start()
 
-        - "ENCABEZADO"
-        - "ANTECEDENTES DE HECHO"
-        - "FUNDAMENTOS DE DERECHO"
-        - "FALLO"
-        - etc.
-        """
-        text = normalized_document.normalizedText or ""
+        end_pattern = re.compile(
+            r"(PROTECCION DE DATOS|PROTECCI[ÓO]N DE DATOS|FIRMA|FIRM[OA]|M[ÁA]NDO Y FIRMO|NOTIFIQUESE)",
+            re.IGNORECASE,
+        )
+        end_match = end_pattern.search(text, pos=m.end())
+        end = end_match.start() if end_match else len(text)
+
+        fallo_text = text[start:end].strip()
+        return fallo_text or None
+
+    # ------------------------------------------------------------------
+    # Section heuristics
+    # ------------------------------------------------------------------
+    def _segment_sections(self, text: str) -> List[schemas.DocumentSection]:
+        """Identify common Spanish legal sections via keyword spotting."""
+        if not text:
+            return []
+
         upper = text.upper()
+        markers: List[Tuple[int, str]] = []
 
-        possible_sections = {
-            "ENCABEZADO": [
-                "JUZGADO DE 1ª INSTANCIA",
-                "JUZGADO DE PRIMERA INSTANCIA",
-                "JUZGADO DE",
-                "MAGISTRADO",
-                "MAGISTRADA",
-            ],
-            "ANTECEDENTES DE HECHO": ["ANTECEDENTES DE HECHO"],
-            "FUNDAMENTOS DE DERECHO": ["FUNDAMENTOS DE DERECHO"],
-            "FUNDAMENTOS JURÍDICOS": ["FUNDAMENTOS JURÍDICOS", "FUNDAMENTOS JURIDICOS"],
-            "FALLO": ["FALLO"],
-            # Puedes ampliar con más si quieres
-        }
+        for section_name, keywords in SECTION_KEYWORDS.items():
+            matches = [upper.find(kw) for kw in keywords if kw in upper]
+            matches = [idx for idx in matches if idx >= 0]
+            if matches:
+                markers.append((min(matches), section_name))
 
-        detected: List[str] = []
+        if not markers:
+            return [
+                schemas.DocumentSection(
+                    name="CUERPO",
+                    content=text.strip() or None,
+                    confidence=0.3,
+                )
+            ]
 
-        for section_name, keywords in possible_sections.items():
-            for kw in keywords:
-                if kw in upper:
-                    detected.append(section_name)
-                    break  # no hace falta seguir buscando más keywords de esa sección
+        markers.sort(key=lambda item: item[0])
+        sections: List[schemas.DocumentSection] = []
 
-        # Eliminamos duplicados manteniendo orden
-        seen = set()
-        unique_detected: List[str] = []
-        for s in detected:
-            if s not in seen:
-                seen.add(s)
-                unique_detected.append(s)
+        for idx, (start, name) in enumerate(markers):
+            end = markers[idx + 1][0] if idx + 1 < len(markers) else len(text)
+            snippet = text[start:end].strip()
+            sections.append(
+                schemas.DocumentSection(
+                    name=name,
+                    content=snippet or None,
+                    confidence=0.8 if snippet else 0.6,
+                )
+            )
 
-        return schemas.SegmentedDocument(
-            normalizedText=normalized_document.normalizedText,
-            sections=unique_detected or None,
-        )
+        return sections
