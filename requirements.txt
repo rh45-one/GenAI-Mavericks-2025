@@ -5,7 +5,12 @@ httpx
 python-dotenv
 python-multipart
 pypdf
+# HTTP client for provider calls
+requests
 # Placeholder OCR dependency (replace with pytesseract or provider SDK)
 pytesseract
+# Text normalization helper
+Unidecode
 # Placeholder LLM dependency (replace with openai or azure)
 openai
+pytest

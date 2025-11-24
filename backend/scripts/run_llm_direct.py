@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import traceback
+from pathlib import Path
 
 # Ensure repo root is importable
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -23,7 +24,10 @@ from backend import dependencies
 from backend import schemas
 
 
-PDF_PATH = r"C:\Users\Juan Sebastian Peña\Desktop\Accenture\GenAI-Mavericks-Challenge\Documents\Documentos jurídicos\SJPI_281_2025.pdf"
+PDF_PATH = os.environ.get(
+    "LLM_SAMPLE_PDF",
+    str(Path(REPO_ROOT) / "Documents" / "Documentos jurídicos" / "SJPI_281_2025.pdf"),
+)
 
 
 def extract_text_from_pdf(path: str) -> str:

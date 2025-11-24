@@ -140,7 +140,7 @@ def _build_document(mode: str, pdf_path: Path) -> schemas.SegmentedDocument:
 
 def run_pipeline(mode: str, pdf_path: Path) -> Dict[str, Any]:
     if mode == "fake":
-        os.environ.setdefault("DEEPSEEK_API_KEY", "sk-demo-local-token")
+        os.environ.setdefault("DEEPSEEK_API_KEY", "sk-placeholder-demo-token")
     else:
         if not os.getenv("DEEPSEEK_API_KEY"):
             raise RuntimeError("Set DEEPSEEK_API_KEY before running in real mode.")
@@ -148,7 +148,7 @@ def run_pipeline(mode: str, pdf_path: Path) -> Dict[str, Any]:
     cfg = config.load_config()
     settings = config.get_settings_dict(cfg)
     if not settings.get("llm_api_key"):
-        settings["llm_api_key"] = os.getenv("DEEPSEEK_API_KEY") or "sk-demo-local-token"
+        settings["llm_api_key"] = os.getenv("DEEPSEEK_API_KEY") or "sk-placeholder-demo-token"
     client = LLMClient(settings)
 
     classifier = ClassificationService(client)

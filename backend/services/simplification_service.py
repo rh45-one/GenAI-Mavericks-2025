@@ -34,7 +34,14 @@ class SimplificationService:
         metadata = self._collect_metadata(document)
         parties = self._collect_parties(document)
 
-        payload = self._call_llm(document, doc_type, doc_subtype, fallo_literal, metadata, parties)
+        payload, was_truncated = self._call_llm(
+            document,
+            doc_type,
+            doc_subtype,
+            fallo_literal,
+            metadata,
+            parties,
+        )
         structured = self._normalize_payload(payload, fallo_literal)
 
         simplified_text = self._render_simplified_text(structured, doc_type, doc_subtype)
@@ -50,6 +57,10 @@ class SimplificationService:
         }
 
         warnings: List[str] = []
+        if was_truncated:
+            warnings.append(
+                "Texto original largo: se truncaron los primeros 12000 caracteres para poder procesarlo."
+            )
 
         return schemas.SimplificationResult(
             simplifiedText=simplified_text,
@@ -62,7 +73,7 @@ class SimplificationService:
             importantSections=important_sections,
             strategy=strategy,
             provider=self._client.provider_name,
-            truncated=False,
+            truncated=was_truncated,
             warnings=warnings,
         )
 
@@ -77,10 +88,13 @@ class SimplificationService:
         fallo_literal: str | None,
         metadata: Dict[str, str],
         parties: Dict[str, str],
-    ) -> Dict[str, Any]:
+    ) -> tuple[Dict[str, Any], bool]:
         text = document.normalizedText or document.rawText or ""
-        if len(text) > self.HARD_LIMIT:
-            text = text[: self.HARD_LIMIT]
+        truncated = False
+        if len(text) > self.MAX_CHARS:
+            truncated = True
+            limit = self.HARD_LIMIT if len(text) > self.HARD_LIMIT else self.MAX_CHARS
+            text = text[:limit]
 
         system = simplification_prompt.system_prompt()
         user = simplification_prompt.user_prompt(
@@ -94,9 +108,9 @@ class SimplificationService:
 
         try:
             raw = self._client.chat(system, user, temperature=0.1)
-            return self._client._parse_json(raw)
+            return self._client._parse_json(raw), truncated
         except Exception:
-            return {}
+            return {}, truncated
 
     # ------------------------------------------------------------------
     # Helpers
